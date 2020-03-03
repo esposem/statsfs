@@ -10,17 +10,26 @@
 
 typedef int kref_t; //TODO: remove in kernel
 
-enum stat_type{ // TODO: here distinguish from numbers and not
+enum stat_type{
+    U8 = 0,
+    U16,
+    U32,
+    U64, // Max number
     BOOL,
-    U64,
+    STR,
 };
+
+static int is_number(enum stat_type type)
+{
+    return type <= U64;
+}
 
 enum stat_aggr{
     NONE = 0,
     SUM,
     MIN,
     MAX,
-    // AVG, TODO: also?
+    AVG, // TODO: for now, avg needs arr[2] that has sum[0] and count[1]
 };
 
 struct statsfs_value {
@@ -57,6 +66,10 @@ struct statsfs_source {
     /* mutex o spinlock */
 };
 
+typedef int (*compare_f) (struct statsfs_value *v1, void *v2);
+typedef void (*aggregate_f) (void *src, enum stat_type type, void **counter);
+
+
 static struct statsfs_value_source *search_value_source_by_base(
                                     struct statsfs_source* src, void *base)
 {
@@ -68,37 +81,60 @@ static struct statsfs_value_source *search_value_source_by_base(
     return NULL;
 }
 
+static int compare_names(struct statsfs_value *v1, void *v2)
+{
+    char *name = (char *) v2;
+    if(strcmp(v1->name, name) == 0){
+        return 1;
+    }
+    return 0;
+}
+
+static int compare_refs(struct statsfs_value *v1, void *v2)
+{
+    struct statsfs_value *el = (struct statsfs_value *) v2;
+    if(el == v1){
+        assert(strcmp(v1->name, el->name) == 0);
+        return 1;
+    }
+    return 0;
+}
 
 static struct statsfs_value *_search_value_in_list(
-                                        struct list_head* src, char *name)
+                                        struct list_head* src,
+                                        compare_f compare,
+                                        void *arg)
 {
     struct statsfs_value *entry;
     list_for_each_entry(entry, src, list_element) {
-        if(strcmp(name, entry->name) == 0)
+        if(compare(entry, arg)) {
             return entry;
+        }
     }
     return NULL;
 }
 
 
-
 static struct statsfs_value *search_aggr_value(
-                                    struct statsfs_source* src, char *name)
+                                    struct statsfs_source* src,
+                                    compare_f compare,
+                                    void *arg)
 {
-    return _search_value_in_list(&src->aggr_values_head, name);
+    return _search_value_in_list(&src->aggr_values_head, compare, arg);
 }
 
 
-// returns the
+
 static struct statsfs_value *search_simple_value(
-                                    struct statsfs_source* src, char *name,
+                                    struct statsfs_source* src,
+                                    compare_f compare, void *arg,
                                     struct statsfs_value_source **val_src)
 {
     struct statsfs_value *entry;
     struct statsfs_value_source *src_entry;
 
     list_for_each_entry(src_entry, &src->simple_values_head, list_element) {
-        entry = _search_value_in_list(&src_entry->values_head, name);
+        entry = _search_value_in_list(&src_entry->values_head, compare, arg);
         if(entry){
             if(val_src){
                 *val_src = src_entry;
@@ -108,6 +144,91 @@ static struct statsfs_value *search_simple_value(
     }
 
     return NULL;
+}
+
+static void aggregate_sum(void *entry, enum stat_type type, void **ret)
+{
+    switch (type) {
+        case U64: {
+            uint64_t **counter = (uint64_t **) ret;
+            uint64_t value = *((uint64_t *) entry);
+            *(*counter) += value;
+            break;
+        }
+        default:
+            printf("SUM for stat type %d not implemented!\n", type);
+            break;
+    }
+}
+
+static void aggregate_max(void *entry, enum stat_type type, void **ret)
+{
+    switch (type) {
+        case U64: {
+            uint64_t **counter = (uint64_t **) ret;
+            uint64_t value = *((uint64_t *) entry);
+            if(*(*counter) < value) {
+                *(*counter) = value;
+            }
+            break;
+        }
+        default:
+            printf("SUM for stat type %d not implemented!\n", type);
+            break;
+    }
+}
+
+
+static void aggregate_min(void *entry, enum stat_type type, void **ret)
+{
+    switch (type) {
+    case U64: {
+        uint64_t **counter = (uint64_t **) ret;
+        uint64_t value = *((uint64_t *) entry);
+        if(*(*counter) > value) {
+            *(*counter) = value;
+        }
+        break;
+    }
+    default:
+        printf("SUM for stat type %d not implemented!\n", type);
+        break;
+    }
+}
+
+
+static void aggregate_avg(void *entry, enum stat_type type, void **ret)
+{
+    switch (type) {
+        case U64: {
+            uint64_t **avg_arr = (uint64_t **) ret;
+            uint64_t *value = (uint64_t *) entry;
+            avg_arr[0] += *value;
+            avg_arr[1]++;
+            break;
+        }
+        default:
+            printf("SUM for stat type %d not implemented!\n", type);
+            break;
+    }
+}
+
+
+static void search_all_simple_values(struct statsfs_source* src,
+                                    aggregate_f aggregate,
+                                    void **aggregate_counter,
+                                    char *name)
+{
+    struct statsfs_value *entry;
+    struct statsfs_value_source *src_entry;
+
+    list_for_each_entry(src_entry, &src->simple_values_head, list_element) {
+        entry = _search_value_in_list(&src_entry->values_head, compare_names, name);
+        if(entry){ // found
+            void *ptr = src_entry->base_addr + entry->offset;
+            aggregate(ptr, entry->type, aggregate_counter);
+        }
+    }
 }
 
 
@@ -299,36 +420,126 @@ void statsfs_source_remove_subordinate(
 }
 
 
-static void do_recursive_aggregation()
+static void do_recursive_aggregation(struct statsfs_source *root,
+                                    enum stat_aggr aggr_type, char *name,
+                                    void **ret)
 {
+    assert(aggr_type != NONE);
 
+    switch (aggr_type) {
+    case SUM:
+        search_all_simple_values(root, aggregate_sum, ret, name);
+        break;
+    case MIN:
+        search_all_simple_values(root, aggregate_min, ret, name);
+        break;
+    case MAX:
+        search_all_simple_values(root, aggregate_max, ret, name);
+        break;
+    case AVG:
+        search_all_simple_values(root, aggregate_avg, ret, name);
+        break;
+    default:
+        printf("Unrecognized aggr_type %d\n", aggr_type);
+        break;
+    }
 }
 
-int statsfs_source_get_value(
-                struct statsfs_source *source,
-                struct statsfs_value *val, void **ret)
+
+static void init_ret_on_aggr(void **ret, enum stat_type type,
+                            enum stat_aggr aggr)
 {
-    return statsfs_source_get_value_by_name(source, val->name, ret);
+    switch (aggr) {
+    case SUM: {
+        switch (type) {
+        case U64: {
+            uint64_t **val = (uint64_t **) ret;
+            *(*val) = 0;
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    case MAX: {
+        switch (type) {
+        case U64: {
+            uint64_t **val = (uint64_t **) ret;
+            *(*val) = 0;
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    case MIN: {
+        switch (type) {
+        case U64: {
+            uint64_t **val = (uint64_t **) ret;
+            *(*val) = UINT64_MAX;
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    case AVG: {
+        switch (type) {
+        case U64: {
+            uint64_t **val = (uint64_t **) ret;
+            (*val)[0] = 0;
+            (*val)[1] = 0;
+            break;
+        }
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
 }
 
-
-int statsfs_source_get_value_by_name(
-                struct statsfs_source *source,
-                const char *name, void **val)
+int _statsfs_source_get_value( struct statsfs_source *source,
+                            compare_f compare, void *arg,
+                            void **ret)
 {
     struct statsfs_value_source *entry;
     struct statsfs_value *found;
-    found = search_simple_value(source, (char *) name, &entry);
+    // look in simple values
+    found = search_simple_value(source, compare, arg, &entry);
     if(found) {
-        *val = entry->base_addr + found->offset;
-        return 0; // TODO:
-    }
-    // look in aggregates
-    found = search_aggr_value(source, (char *) name);
-    if(found && found->type == U64){ // here do the recursive thing
-    // TODO: type aggr
-        do_recursive_aggregation();
+        *ret = entry->base_addr + found->offset;
         return 0;
     }
+    // look in aggregates
+    found = search_aggr_value(source, compare, arg);
+    if(found && is_number(found->type)){ // TODO: work only on numbers?
+        init_ret_on_aggr(ret, found->type, found->aggr_kind);
+
+        do_recursive_aggregation(source, found->aggr_kind,
+                                (char *) found->name, ret);
+        return 0;
+    }
+    printf("Value in source %s not found!\n", source->name);
     return -ENOENT;
+}
+
+int statsfs_source_get_value_by_val(
+                struct statsfs_source *source,
+                struct statsfs_value *val, void **ret)
+{
+    return _statsfs_source_get_value(source, compare_refs, val, ret);
+}
+
+int statsfs_source_get_value_by_name(
+                struct statsfs_source *source,
+                const char *name, void **ret)
+{
+    return _statsfs_source_get_value(source, compare_names,
+                                    (char *) name, ret);
 }

@@ -33,7 +33,7 @@ void statsfs_source_remove_subordinate(
 // statsfs_source_add_aggregate). Se c’è lì, itera su tutte le sorgenti subordinate e calcola
 // minimo/massimo/media/totale/quello che serve
 // 3) se non c’è nemmeno lì, ritorna -ENOENT.
-int statsfs_source_get_value(
+int statsfs_source_get_value_by_val(
                 struct statsfs_source *source,
                 struct statsfs_value *val, void **ret);
 
