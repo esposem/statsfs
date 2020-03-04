@@ -9,6 +9,16 @@
 #include "statsfs_internal.h"
 #include "statsfs.h"
 
+/*
+    TODO:
+    - kref and mutex
+    - define all types
+    - define all aggregations
+    - better way to check types and aggregation
+    - AVG problem
+    - statsfs_source_register?
+*/
+
 void statsfs_source_register(struct statsfs_source *source){
     // TODO: ???
 }
@@ -37,9 +47,8 @@ struct statsfs_source *statsfs_source_create(const char *fmt, ...)
     }
     memcpy(ret->name,buf, char_needed);
     ret->name[char_needed] = '\0';
-    printf("Name is %s\n", ret->name);
 
-    ret->refcount = 0;
+    ret->refcount = 1; //TODO: fix for kernel
     ret->simple_values_head = (struct list_head)
                             LIST_HEAD_INIT(ret->simple_values_head);
     ret->aggr_values_head = (struct list_head)
@@ -83,13 +92,14 @@ void statsfs_source_destroy(struct statsfs_source *src)
 }
 
 
-void statsfs_source_add_values(struct statsfs_source *source,
+int statsfs_source_add_values(struct statsfs_source *source,
                    const struct statsfs_value *stat, void *ptr)
 {
     assert(source != NULL);
     assert(ptr != NULL);
 
     struct statsfs_value_source *val_src;
+    int count = 0;
 
     val_src = search_value_source_by_base(source, ptr);
     if(!val_src) {
@@ -98,27 +108,33 @@ void statsfs_source_add_values(struct statsfs_source *source,
         list_add(&val_src->list_element, &source->simple_values_head);
     }
 
-    struct statsfs_value *p;
+    struct statsfs_value *p, *same;
     for(p = (struct statsfs_value *) stat; p->name; p++) {
-        if(p->aggr_kind == 0) {
+        same = search_in_value_source_by_name(val_src, (char *) p->name);
+        if(!same && p->aggr_kind == 0) {
             // add the val to the val_src list
             list_add(&p->list_element, &val_src->values_head);
+            count++;
         }
     }
+    return count;
 }
 
 
-void statsfs_source_add_aggregate(struct statsfs_source *source,
+int statsfs_source_add_aggregate(struct statsfs_source *source,
                                 const struct statsfs_value *stat)
 {
     assert(source != NULL);
     struct statsfs_value *p;
+    int count = 0;
     for(p = (struct statsfs_value *) stat; p->name; p++) {
         if(p->aggr_kind != 0) {
             list_add(&p->list_element, &source->aggr_values_head);
+            count++;
         }
     }
 
+    return count;
 }
 
 void statsfs_source_add_subordinate(
@@ -171,11 +187,20 @@ int statsfs_source_get_value_by_name(
                                     (char *) name, ret);
 }
 
-void statsfs_source_get(struct statsfs_source *)
+void statsfs_source_get(struct statsfs_source *source)
 {
-    // TODO:
+    // TODO: fix for kernel
+    source->refcount++;
 }
-void statsfs_source_put(struct statsfs_source *)
+
+
+void statsfs_source_put(struct statsfs_source *source)
 {
-    // TODO:
+    // TODO: fix for kernel
+    if(source->refcount){
+        source->refcount--;
+        if(source->refcount == 0){
+            statsfs_source_destroy(source);
+        }
+    }
 }

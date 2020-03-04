@@ -2,37 +2,9 @@
 #define _STATSFS_INTERNAL_H
 
 #include "list.h"
+#include "statsfs.h"
 
 typedef int kref_t; //TODO: remove in kernel
-
-enum stat_type{
-    U8 = 0,
-    U16,
-    U32,
-    U64, // Max number
-    BOOL,
-    STR,
-};
-
-enum stat_aggr{
-    NONE = 0,
-    SUM,
-    MIN,
-    MAX,
-    AVG, // TODO: for now, avg needs arr[2] that has sum[0] and count[1]
-};
-
-struct statsfs_value {
-    const char *name;
-    enum stat_type type;	/* STAT_TYPE_{BOOL,U64,...} */
-    /* Bitmask with zero or more of STAT_AGGR_{MIN,MAX,SUM,...} */
-    enum stat_aggr aggr_kind;
-    uint16_t mode;		        /* File mode */
-    /* Offset from base address to field containing the value */
-    int offset;
-
-    struct list_head list_element;
-};
 
 struct statsfs_value_source {
     void *base_addr;
@@ -65,6 +37,12 @@ void statsfs_values_debug_list(struct statsfs_source *parent);
 
 struct statsfs_value_source *search_value_source_by_base(
                                     struct statsfs_source* src, void *base);
+
+struct statsfs_value *search_in_value_source_by_name(
+                                struct statsfs_value_source * src, char *name);
+struct statsfs_value *search_in_value_source_by_val(
+                                struct statsfs_value_source * src,
+                                struct statsfs_value * val);
 
 int compare_names(struct statsfs_value *v1, void *v2);
 int compare_refs(struct statsfs_value *v1, void *v2);
