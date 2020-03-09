@@ -12,15 +12,11 @@
 /*
     TODO:
     - kref and mutex
-    - define all types
-    - define all aggregations
-    - better way to check types and aggregation
-    - AVG problem
-    - statsfs_source_register?
+    - files
 */
 
 void statsfs_source_register(struct statsfs_source *source){
-    // TODO: ???
+    // TODO: creates file /sys/kernel/statsfs/kvm
 }
 
 
@@ -110,13 +106,15 @@ int statsfs_source_add_values(struct statsfs_source *source,
 
     struct statsfs_value *p, *same;
     for(p = (struct statsfs_value *) stat; p->name; p++) {
-        same = search_in_value_source_by_name(val_src, (char *) p->name);
+        same = search_in_value_source_by_name(val_src, p->name);
         if(!same && p->aggr_kind == 0) {
             // add the val to the val_src list
             list_add(&p->list_element, &val_src->values_head);
             count++;
         }
     }
+    // printf("statsfs_source_add_values on %s\n", source->name);
+    // statsfs_values_debug_list(source);
     return count;
 }
 
@@ -133,6 +131,8 @@ int statsfs_source_add_aggregate(struct statsfs_source *source,
             count++;
         }
     }
+    // printf("statsfs_source_add_aggregates on %s\n", source->name);
+    // statsfs_values_debug_list(source);
 
     return count;
 }
@@ -144,6 +144,8 @@ void statsfs_source_add_subordinate(
     assert(source != NULL);
     assert(sub != NULL);
     list_add(&sub->list_element, &source->subordinates_head);
+    // printf("statsfs_source_add_subordinate on %s\n", source->name);
+    // statsfs_subordinates_debug_list(source);
 }
 
 
@@ -173,7 +175,7 @@ void statsfs_source_remove_subordinate(
 
 int statsfs_source_get_value_by_val(
                 struct statsfs_source *source,
-                struct statsfs_value *val, void **ret)
+                struct statsfs_value *val, uint64_t*ret)
 {
     return statsfs_source_get_value(source, compare_refs, val, ret);
 }
@@ -181,10 +183,15 @@ int statsfs_source_get_value_by_val(
 
 int statsfs_source_get_value_by_name(
                 struct statsfs_source *source,
-                const char *name, void **ret)
+                char *name, uint64_t*ret)
 {
+    printf("statsfs_source_get_value_by_name(%s) on %s\n", name, source->name);
+    statsfs_subordinates_debug_list(source);
+    statsfs_values_debug_list(source);
+    printf("\n");
+
     return statsfs_source_get_value(source, compare_names,
-                                    (char *) name, ret);
+                                    name, ret);
 }
 
 void statsfs_source_get(struct statsfs_source *source)

@@ -8,7 +8,7 @@ typedef int kref_t; //TODO: remove in kernel
 
 struct statsfs_value_source {
     void *base_addr;
-    struct list_head values_head;
+    struct list_head values_head; // all values with this base
     struct list_head list_element;
 };
 
@@ -29,7 +29,7 @@ struct statsfs_source {
 };
 
 typedef int (*compare_f) (struct statsfs_value *v1, void *v2);
-typedef void (*aggregate_f) (void *src, enum stat_type type, void **counter);
+typedef void (*aggregate_f) (void *src, uint64_t*counter);
 
 
 void statsfs_subordinates_debug_list(struct statsfs_source *parent);
@@ -47,27 +47,26 @@ struct statsfs_value *search_in_value_source_by_val(
 int compare_names(struct statsfs_value *v1, void *v2);
 int compare_refs(struct statsfs_value *v1, void *v2);
 
-struct statsfs_value *search_aggr_value(struct statsfs_source* src,
-                                        compare_f compare, void *arg);
+
 struct statsfs_value *search_simple_value( struct statsfs_source* src,
                                     compare_f compare, void *arg,
                                     struct statsfs_value_source **val_src);
 void search_all_simple_values(struct statsfs_source* src,
                                 aggregate_f aggregate,
-                                void **aggregate_counter,
+                                uint64_t *aggregate_counter,
                                 char *name);
 
 struct statsfs_value_source *create_value_source(void *base);
 
 int statsfs_source_get_value(struct statsfs_source *source,
                             compare_f compare, void *arg,
-                            void **ret);
+                            uint64_t *ret);
 
 void do_recursive_aggregation(struct statsfs_source *root,
                                 enum stat_aggr aggr_type, char *name,
-                                void **ret);
+                                uint64_t*ret);
 
-void init_ret_on_aggr(void **ret, enum stat_type type,
+void init_ret_on_aggr(uint64_t *ret, enum stat_type type,
                         enum stat_aggr aggr);
 
 

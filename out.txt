@@ -1,0 +1,20 @@
+statsfs_source_get_value_by_name(sum_aggr_u64) on kvm_main
+#####SUBFOLDERS#####
+Source kvm_main
+Dir:	name:kvm_2	refc:1
+Dir:	name:kvm_1	refc:1
+#####AGGREGATES#####
+#####NORMAL#####
+Value:
+name:avg_agg_u16	off:46	type:5	aggr:0
+Value:
+name:max_agg_u8	off:44	type:4	aggr:0
+Value:
+name:sum_aggr_u64	off:32	type:7	aggr:0
+Value:
+name:min_aggr_u32	off:40	type:6	aggr:0
+Value:
+name:simple_2	off:48	type:5	aggr:0
+
+Not found in aggregates
+Res 0

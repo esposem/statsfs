@@ -49,15 +49,11 @@ struct kvm {
 #define STATSFS_STAT_AGGR(x, ...) { .name= #x, .offset= 0, ## __VA_ARGS__ }
 
 
-// TODO: if field in this structure is STATSFS_STAT2, it will break
-// TODO: what if a sum_aggr_64 is a u32?
-
-// 4 aggr, 2 val
-struct statsfs_value values1[7] = {
+// 3 aggr, 2 val
+struct statsfs_value values1[6] = {
     STATSFS_STAT_AGGR(sum_aggr_u64, .type= U64, .aggr_kind= SUM, .mode = 0),
     STATSFS_STAT_AGGR(min_aggr_u32, .type= U32, .aggr_kind= MIN, .mode = 0),
     STATSFS_STAT_AGGR(bool_aggr_sum, .type=BOOL, .aggr_kind= SUM, .mode = 0),
-    STATSFS_STAT_AGGR(str_aggr, .type=STR, .aggr_kind= MIN, .mode = 0),
     STATSFS_STAT1(simple_1_u32, .type=U32),
     STATSFS_STAT1(max_agg_u8, .type=U8),
     {NULL}
@@ -76,20 +72,18 @@ struct statsfs_value values2[9] = {
     {NULL}
 };
 
-// 6 val
-struct statsfs_value values3[7] = {
+// 5 val
+struct statsfs_value values3[6] = {
     STATSFS_STAT3(simple_1_u16, .type=U16),
     STATSFS_STAT3(simple_1_u8, .type=U8),
     STATSFS_STAT3(simple_1_bool, .type=BOOL),
-    STATSFS_STAT3(simple_1_str, .type=STR),
     STATSFS_STAT3(sum_aggr_u64, .type=U64),
     STATSFS_STAT3(max_agg_u8, .type=U8),
     {NULL}
 };
 
-// 5 val, 1 aggr
-struct statsfs_value values4[7] = {
-    STATSFS_STAT1(simple_2, .type=STR),
+// 4 val, 1 aggr
+struct statsfs_value values4[6] = {
     STATSFS_STAT1(sum_aggr_u64, .type=U64),
     STATSFS_STAT_AGGR(bool_aggr_sum, .type=BOOL, .aggr_kind= SUM, .mode = 0),
     STATSFS_STAT1(min_aggr_u32, .type= U32),
@@ -113,10 +107,9 @@ int main(int argc, char *argv[]){
             .simple_1_u32 = 32,
             .max_agg_u8 = 255,
             .avg_agg_u16 = 1600,
-            .simple_2 = "prova",
         },
         .stat2 = {
-            .sum_aggr_u64 = 43,
+            // .sum_aggr_u64 = 43,
             .min_aggr_u32 = 0,
             .max_agg_u8 = 80,
             .avg_agg_u16 = 16,
@@ -130,7 +123,6 @@ int main(int argc, char *argv[]){
             .simple_1_u16 = 65535,
             .simple_1_u8 = 200,
             .simple_1_bool = true,
-            .simple_1_str = "prova2",
         },
     };
 
@@ -177,6 +169,8 @@ int main(int argc, char *argv[]){
     struct statsfs_source *kvm_2_1_1_1= statsfs_source_create("kvm_2_1_1_1");
     statsfs_source_add_subordinate(kvm_2_1_1, kvm_2_1_1_1);
 
+    // statsfs_source_destroy
+
     int ret = 0;
     ret = statsfs_source_add_values(kvm_main, values2, &k.stat1);
     assert(ret == 5);
@@ -184,7 +178,7 @@ int main(int argc, char *argv[]){
     ret = statsfs_source_add_values(kvm_1, values5, &k.stat3);
     assert(ret == 2);
     ret = statsfs_source_add_aggregate(kvm_1, values1);
-    assert(ret == 4);
+    assert(ret == 3);
 
     ret = statsfs_source_add_aggregate(kvm_1_2, values2);
     assert(ret == 3);
@@ -194,23 +188,22 @@ int main(int argc, char *argv[]){
     ret = statsfs_source_add_aggregate(kvm_2_1_1_1, values3);
     assert(ret == 0);
     ret = statsfs_source_add_values(kvm_2_1_1_1, values4, &k.stat1);
-    assert(ret == 5);
+    assert(ret == 4);
 
     ret = statsfs_source_add_aggregate(kvm_2_2, values2);
     assert(ret == 3);
     ret = statsfs_source_add_values(kvm_2_2, values3, &k.stat3);
-    assert(ret == 6);
+    assert(ret == 5);
 
     ret = statsfs_source_add_values(kvm_2_3, values3, &k.stat3);
-    assert(ret == 6);
+    assert(ret == 5);
     ret = statsfs_source_add_values(kvm_2_3, values1, &k.stat1);
     assert(ret == 2);
 
-    // uint64_t res_u64;
-    // uint32_t res_u32;
-    // uint16_t res_u16;
-    // uint8_t res_u8;
-    // statsfs_source_get_value_by_name(kvm_main, "sum_aggr_u64", )
+    uint64_t res;
+    statsfs_source_get_value_by_name(kvm_main, "sum_aggr_u64", &res);
+    printf("Res %ld\n", res);
+    // assert(23 + 43 + 5554 == res);
     // statsfs_source_get_value_by_val
 
     // find then remove and then refind
