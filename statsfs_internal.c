@@ -11,6 +11,22 @@
 
 /* Helpers */
 
+#define SET_TYPE_CASE_TYPE(case_enum, type, value, ret)       \
+                case case_enum:                               \
+                case case_enum | STATSFS_SIGN:                \
+                    ret = *((type *) value);                  \
+                    break;
+
+
+#define SET_AGG_CASE_TYPE(case_enum, value, ret)       \
+                case case_enum:                        \
+                    *ret = (uint64_t) value;           \
+                    break;                             \
+                case case_enum | STATSFS_SIGN:         \
+                    *ret = (int64_t) value;            \
+                    break;
+
+
 static int is_val_signed(struct statsfs_value *val)
 {
     return val->type & STATSFS_SIGN;
@@ -111,6 +127,25 @@ static struct statsfs_value *search_simple_value(struct statsfs_source* src,
 }
 
 
+static uint64_t get_correct_value(void *address, enum stat_type type)
+{
+    uint64_t value_found;
+
+    switch (type) {
+        SET_TYPE_CASE_TYPE(STATSFS_U8, int8_t, address, value_found)
+        SET_TYPE_CASE_TYPE(STATSFS_U16, int16_t, address, value_found)
+        SET_TYPE_CASE_TYPE(STATSFS_U32, int32_t, address, value_found)
+        SET_TYPE_CASE_TYPE(STATSFS_U64, int64_t, address, value_found)
+        SET_TYPE_CASE_TYPE(STATSFS_BOOL, int8_t, address, value_found)
+        default:
+            value_found = 0;
+            break;
+    }
+
+    return value_found;
+}
+
+
 static void search_all_simple_values(struct statsfs_source* src,
                                 struct statsfs_aggregate_value *agg,
                                 struct statsfs_value *val)
@@ -118,17 +153,28 @@ static void search_all_simple_values(struct statsfs_source* src,
     struct statsfs_value *entry;
     struct statsfs_value_source *src_entry;
     uint64_t value_found;
-
+    void *address;
     list_for_each_entry(src_entry, &src->simple_values_head, list_element) {
-        entry = _search_value_in_arr(&src_entry->values, val);
+        entry = _search_name_in_arr(&src_entry->values, val->name);
         if (entry) { // found
-            value_found = *((uint64_t *) src_entry->base_addr + entry->offset);
+            address = src_entry->base_addr + entry->offset;
+            value_found = get_correct_value(address, val->type);
+            // printf("Value found %s in %s: %ld\n", val->name, src->name, ((int64_t) value_found));
             agg->sum += value_found;
             agg->count++;
             agg->count_zero += (value_found == 0);
+            // printf("Old max min %ld %ld\n", agg->max, agg->min);
+
             if(is_val_signed(val)){
+                agg->max = (((int64_t) value_found) >= ((int64_t) agg->max)) ?
+                             value_found : agg->max;
+                agg->min = (((int64_t) value_found) <= ((int64_t) agg->min)) ?
+                             value_found : agg->min;
+                // printf("New max min SIGN %ld %ld\n", agg->max, agg->min);
+            } else {
                 agg->max = (value_found >= agg->max) ? value_found : agg->max;
                 agg->min = (value_found <= agg->min) ? value_found : agg->min;
+                // printf("New max min %ld %ld\n", agg->max, agg->min);
             }
         }
     }
@@ -141,6 +187,7 @@ static void do_recursive_aggregation(struct statsfs_source *root,
 {
     struct statsfs_source *subordinate;
 
+    // printf("Dir %s\n", root->name);
     // search all simple values in this folder
     search_all_simple_values(root, agg, val);
 
@@ -166,27 +213,18 @@ static void init_aggregate_value(struct statsfs_aggregate_value *agg,
 }
 
 
-#define SET_CASE_TYPE(case_t, value, ret)       \
-                case case_t:                    \
-                    *ret = (uint64_t) value;    \
-                    break;                      \
-                case case_t | STATSFS_SIGN:     \
-                    *ret = (int64_t) value;     \
-                    break;
-
-
 static void set_final_value(struct statsfs_aggregate_value *agg,
                             struct statsfs_value *val,
                             uint64_t *ret)
 {
     int operation = val->aggr_kind | is_val_signed(val);
     switch (operation) {
-        SET_CASE_TYPE(STATSFS_AVG,
+        SET_AGG_CASE_TYPE(STATSFS_AVG,
             agg->count ? agg->sum / agg->count : 0, ret)
-        SET_CASE_TYPE(STATSFS_SUM, agg->sum, ret)
-        SET_CASE_TYPE(STATSFS_MIN, agg->min, ret)
-        SET_CASE_TYPE(STATSFS_MAX, agg->max, ret)
-        SET_CASE_TYPE(STATSFS_COUNT_ZERO, agg->count_zero, ret)
+        SET_AGG_CASE_TYPE(STATSFS_SUM, agg->sum, ret)
+        SET_AGG_CASE_TYPE(STATSFS_MIN, agg->min, ret)
+        SET_AGG_CASE_TYPE(STATSFS_MAX, agg->max, ret)
+        SET_AGG_CASE_TYPE(STATSFS_COUNT_ZERO, agg->count_zero, ret)
     default:
         break;
     }
@@ -311,6 +349,7 @@ int search_in_source_by_value(struct statsfs_source *source,
     struct statsfs_value_source *entry;
     struct statsfs_value *found;
     struct statsfs_aggregate_value aggr;
+    void *address;
     assert(ret != NULL);
     assert(source != NULL);
 
@@ -321,9 +360,11 @@ int search_in_source_by_value(struct statsfs_source *source,
      // look in simple values
     found = search_simple_value(source, arg, &entry);
     if (found) {
-        *ret = *((uint64_t *) (entry->base_addr + found->offset));
+        address = entry->base_addr + found->offset;
+        *ret = get_correct_value(address, found->type);
         return 0;
     }
+    // printf("no simple val for %s in %s\n", arg->name, source->name);
 
     // look in aggregates
     found = search_aggr_in_source_by_val(source, arg);
