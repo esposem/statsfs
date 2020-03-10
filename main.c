@@ -524,6 +524,7 @@ static void test_all_aggregations()
     n = statsfs_source_get_value_by_name(src, "s16", &ret);
     assert(n == 0 && ret == def_val_s16);
 
+    statsfs_source_destroy(src);
 
 }
 
