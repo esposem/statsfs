@@ -3,27 +3,29 @@
 
 #include "list.h"
 
+#define STATSFS_SIGN 0x8000
+
 struct statsfs_source;
 
 enum stat_type{
-    I8 = 0,
-    I16,
-    I32,
-    I64,
-    U8,
-    U16,
-    U32,
-    U64, // Max number
-    BOOL,
+    STATSFS_U8 = 0,
+    STATSFS_U16 = 1,
+    STATSFS_U32 = 2,
+    STATSFS_U64 = 3,
+    STATSFS_BOOL = 4,
+    STATSFS_S8 = STATSFS_U8 | STATSFS_SIGN,
+    STATSFS_S16 = STATSFS_U16 | STATSFS_SIGN,
+    STATSFS_S32 = STATSFS_U32 | STATSFS_SIGN,
+    STATSFS_S64 = STATSFS_U64 | STATSFS_SIGN,
 };
 
 enum stat_aggr{
-    NONE = 0,
-    SUM,
-    MIN,
-    MAX,
-    COUNT_ZERO,
-    AVG,
+    STATSFS_NONE = 0,
+    STATSFS_SUM,
+    STATSFS_MIN,
+    STATSFS_MAX,
+    STATSFS_COUNT_ZERO,
+    STATSFS_AVG,
 };
 
 struct statsfs_value {
@@ -35,9 +37,6 @@ struct statsfs_value {
     /* Bitmask with zero or more of STAT_AGGR_{MIN,MAX,SUM,...} */
     enum stat_aggr aggr_kind;
     uint16_t mode;		        /* File mode */
-
-    struct list_head list_element;
-
 };
 
 
@@ -55,7 +54,7 @@ int statsfs_source_add_aggregate(struct statsfs_source *source,
 void statsfs_source_add_subordinate(struct statsfs_source *source,
                                     struct statsfs_source *sub);
 
-// Does not destroys the subordinate!
+// Does not destroy the subordinate!
 void statsfs_source_remove_subordinate(struct statsfs_source *source,
                                         struct statsfs_source *sub);
 
