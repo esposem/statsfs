@@ -270,6 +270,33 @@ static void test_search_value_in_subfolder()
     statsfs_source_destroy(src);
 }
 
+
+static void test_search_value_in_empty_folder()
+{
+    struct statsfs_source *src, *sub;
+    uint64_t ret;
+    int n;
+
+    src = statsfs_source_create("empty folder");
+    assert(get_number_aggregates(src) == 0);
+    assert(get_number_subsources(src) == 0);
+    assert(get_number_values(src) == 0);
+
+    n = statsfs_source_get_value_by_name(src, "u64", &ret);
+    assert(ret == 0 && n == -ENOENT);
+
+    n = statsfs_source_get_value_by_name(src, "s32", &ret);
+    assert(ret == 0 && n == -ENOENT);
+
+    n = statsfs_source_get_value_by_name(src, "bo", &ret);
+    assert(ret == 0 && n == -ENOENT);
+
+    n = statsfs_source_get_value_by_name(src, "does not exist", &ret);
+    assert(ret == 0 && n == -ENOENT);
+
+    statsfs_source_destroy(src);
+}
+
 static void test_add_aggregate()
 {
     struct statsfs_source *src;
@@ -474,7 +501,7 @@ static void test_search_mixed()
     statsfs_source_destroy(src);
 }
 
-static void test_all_aggregations()
+static void test_all_aggregations_agg_val_val()
 {
     struct statsfs_source *src, *sub1, *sub2;
     uint64_t ret;
@@ -496,28 +523,20 @@ static void test_all_aggregations()
     n = statsfs_source_add_aggregate(src, test_all_aggr);
     assert(n == ARR_SIZE(test_all_aggr));
 
-    // char *values[] = {"u64", "s32", "bo", "u8", "s16"};
-    // uint64_t expected_res[] = {
-    //     def_u64*2, def_val_s32, 1, 63, def_val_s16
-    // };
-
     // sum
     n = statsfs_source_get_value_by_name(src, "u64", &ret);
     assert(n == 0 && ret == def_u64*2);
 
     // min
     n = statsfs_source_get_value_by_name(src, "s32", &ret);
-                // printf("%d %ld %d\n", n, ret, INT32_MIN);
     assert(n == 0 && ((int32_t) ret) == def_val_s32);
 
     // count_0
     n = statsfs_source_get_value_by_name(src, "bo", &ret);
-            // printf("%d %ld\n", n, ret);
     assert(n == 0 && ret == 1);
 
     // avg
     n = statsfs_source_get_value_by_name(src, "u8", &ret);
-            // printf("%d %ld\n", n, ret);
     assert(n == 0 && ret == 62);
 
     // max
@@ -525,13 +544,161 @@ static void test_all_aggregations()
     assert(n == 0 && ret == def_val_s16);
 
     statsfs_source_destroy(src);
+}
 
+
+static void test_all_aggregations_val_agg_val()
+{
+    struct statsfs_source *src, *sub1, *sub2;
+    uint64_t ret;
+    int n;
+    uint64_t x = INT64_MAX;// INT64_MAX;
+    src = statsfs_source_create("parent");
+    sub1 = statsfs_source_create("child1");
+    sub2 = statsfs_source_create("child2");
+    statsfs_source_add_subordinate(src, sub1);
+    statsfs_source_add_subordinate(src, sub2);
+
+    n = statsfs_source_add_values(src, test_values, &cont);
+    assert(n == ARR_SIZE(test_values));
+    n = statsfs_source_add_values(sub2, test_values2, &cont);
+    assert(n == ARR_SIZE(test_values));
+
+    assert(get_total_number_values(src) == ARR_SIZE(test_values)*2);
+
+    n = statsfs_source_add_aggregate(sub1, test_all_aggr);
+    assert(n == ARR_SIZE(test_all_aggr));
+
+    n = statsfs_source_get_value_by_name(src, "u64", &ret);
+    assert(n == 0 && ret == def_u64);
+    n = statsfs_source_get_value_by_name(sub1, "u64", &ret);
+    assert(n == 0 && ret == 0);
+    n = statsfs_source_get_value_by_name(sub2, "u64", &ret);
+    assert(n == 0 && ret == def_u64);
+
+    n = statsfs_source_get_value_by_name(src, "s32", &ret);
+    assert(n == 0 && ((int32_t) ret) == def_val_s32);
+    n = statsfs_source_get_value_by_name(sub1, "s32", &ret);
+    assert(n == 0 && ret == INT64_MAX); // MIN
+    n = statsfs_source_get_value_by_name(sub2, "s32", &ret);
+    assert(n == 0 && ((int32_t) ret) == def_val2_s32);
+
+    n = statsfs_source_get_value_by_name(src, "bo", &ret);
+    assert(n == 0 && ret == def_val_bool);
+    n = statsfs_source_get_value_by_name(sub1, "bo", &ret);
+    assert(n == 0 && ret == 0);
+    n = statsfs_source_get_value_by_name(sub2, "bo", &ret);
+    assert(n == 0 && ret == def_val2_bool);
+
+    n = statsfs_source_get_value_by_name(src, "u8", &ret);
+    assert(n == 0 && ret == def_val_u8);
+    n = statsfs_source_get_value_by_name(sub1, "u8", &ret);
+    assert(n == 0 && ret == 0);
+    n = statsfs_source_get_value_by_name(sub2, "u8", &ret);
+    assert(n == 0 && ret == def_val2_u8);
+
+    n = statsfs_source_get_value_by_name(src, "s16", &ret);
+    assert(n == 0 && ret == def_val_s16);
+    n = statsfs_source_get_value_by_name(sub1, "s16", &ret);
+    assert(n == 0 && ret == INT64_MIN); // MAX
+    n = statsfs_source_get_value_by_name(sub2, "s16", &ret);
+    assert(n == 0 && ret == def_val2_s16);
+
+    statsfs_source_destroy(src);
+}
+
+static void test_all_aggregations_agg_val_val_sub()
+{
+    struct statsfs_source *src, *sub1, *sub11;
+    uint64_t ret;
+    int n;
+
+    src = statsfs_source_create("parent");
+    sub1 = statsfs_source_create("child1");
+    sub11 = statsfs_source_create("child11");
+    statsfs_source_add_subordinate(src, sub1);
+    statsfs_source_add_subordinate(sub1, sub11); // changes here!
+
+    n = statsfs_source_add_values(sub1, test_values, &cont);
+    assert(n == ARR_SIZE(test_values));
+    n = statsfs_source_add_values(sub11, test_values2, &cont);
+    assert(n == ARR_SIZE(test_values));
+
+    assert(get_total_number_values(src) == ARR_SIZE(test_values)*2);
+
+    n = statsfs_source_add_aggregate(src, test_all_aggr);
+    assert(n == ARR_SIZE(test_all_aggr));
+
+    // sum
+    n = statsfs_source_get_value_by_name(src, "u64", &ret);
+    assert(n == 0 && ret == def_u64*2);
+
+    // min
+    n = statsfs_source_get_value_by_name(src, "s32", &ret);
+    assert(n == 0 && ((int32_t) ret) == def_val_s32);
+
+    // count_0
+    n = statsfs_source_get_value_by_name(src, "bo", &ret);
+    assert(n == 0 && ret == 1);
+
+    // avg
+    n = statsfs_source_get_value_by_name(src, "u8", &ret);
+    assert(n == 0 && ret == 62);
+
+    // max
+    n = statsfs_source_get_value_by_name(src, "s16", &ret);
+    assert(n == 0 && ret == def_val_s16);
+
+    statsfs_source_destroy(src);
+}
+
+
+static void test_all_aggregations_agg_no_val_sub()
+{
+    struct statsfs_source *src, *sub1, *sub11;
+    uint64_t ret;
+    int n;
+
+    src = statsfs_source_create("parent");
+    sub1 = statsfs_source_create("child1");
+    sub11 = statsfs_source_create("child11");
+    statsfs_source_add_subordinate(src, sub1);
+    statsfs_source_add_subordinate(sub1, sub11);
+
+    // changes here!
+    n = statsfs_source_add_values(sub11, test_values2, &cont);
+    assert(n == ARR_SIZE(test_values));
+
+    assert(get_total_number_values(src) == ARR_SIZE(test_values));
+
+    n = statsfs_source_add_aggregate(src, test_all_aggr);
+    assert(n == ARR_SIZE(test_all_aggr));
+
+    // sum
+    n = statsfs_source_get_value_by_name(src, "u64", &ret);
+    assert(n == 0 && ret == def_u64);
+
+    // min
+    n = statsfs_source_get_value_by_name(src, "s32", &ret);
+    assert(n == 0 && ((int32_t) ret) == def_val2_s32);
+
+    // count_0
+    n = statsfs_source_get_value_by_name(src, "bo", &ret);
+    assert(n == 0 && ret == 1);
+
+    // avg
+    n = statsfs_source_get_value_by_name(src, "u8", &ret);
+    assert(n == 0 && ret == def_val2_u8);
+
+    // max
+    n = statsfs_source_get_value_by_name(src, "s16", &ret);
+    assert(n == 0 && ret == def_val2_s16);
+
+    statsfs_source_destroy(src);
 }
 
 // todo test all aggregation operations on:
-// - source (agg) sub1 (val) sub2 (val)
-// - source (val) sub1 (agg) sub2 (val)
-// - source (agg) sub1 (val) sub11 (val)
+
 // - source (agg) sub1 () sub11 (val)
 int main(int argc, char *argv[]) {
     test_empty_folder();
@@ -540,6 +707,7 @@ int main(int argc, char *argv[]) {
     test_add_value_in_subfolder();
     test_search_value();
     test_search_value_in_subfolder();
+    test_search_value_in_empty_folder();
     test_add_aggregate();
     test_add_aggregate_in_subfolder();
     test_search_aggregate();
@@ -547,6 +715,9 @@ int main(int argc, char *argv[]) {
     test_search_same();
     test_add_mixed();
     test_search_mixed();
-    test_all_aggregations();
+    test_all_aggregations_agg_val_val();
+    test_all_aggregations_val_agg_val();
+    test_all_aggregations_agg_val_val_sub();
+    test_all_aggregations_agg_no_val_sub();
     printf("Test completed\n");
 }
