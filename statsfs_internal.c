@@ -159,22 +159,18 @@ static void search_all_simple_values(struct statsfs_source* src,
         if (entry) { // found
             address = src_entry->base_addr + entry->offset;
             value_found = get_correct_value(address, val->type);
-            // printf("Value found %s in %s: %ld\n", val->name, src->name, ((int64_t) value_found));
             agg->sum += value_found;
             agg->count++;
             agg->count_zero += (value_found == 0);
-            // printf("Old max min %ld %ld\n", agg->max, agg->min);
 
             if(is_val_signed(val)){
                 agg->max = (((int64_t) value_found) >= ((int64_t) agg->max)) ?
                              value_found : agg->max;
                 agg->min = (((int64_t) value_found) <= ((int64_t) agg->min)) ?
                              value_found : agg->min;
-                // printf("New max min SIGN %ld %ld\n", agg->max, agg->min);
             } else {
                 agg->max = (value_found >= agg->max) ? value_found : agg->max;
                 agg->min = (value_found <= agg->min) ? value_found : agg->min;
-                // printf("New max min %ld %ld\n", agg->max, agg->min);
             }
         }
     }
@@ -187,7 +183,6 @@ static void do_recursive_aggregation(struct statsfs_source *root,
 {
     struct statsfs_source *subordinate;
 
-    // printf("Dir %s\n", root->name);
     // search all simple values in this folder
     search_all_simple_values(root, agg, val);
 
@@ -364,7 +359,6 @@ int search_in_source_by_value(struct statsfs_source *source,
         *ret = get_correct_value(address, found->type);
         return 0;
     }
-    // printf("no simple val for %s in %s\n", arg->name, source->name);
 
     // look in aggregates
     found = search_aggr_in_source_by_val(source, arg);

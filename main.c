@@ -697,9 +697,7 @@ static void test_all_aggregations_agg_no_val_sub()
     statsfs_source_destroy(src);
 }
 
-// todo test all aggregation operations on:
 
-// - source (agg) sub1 () sub11 (val)
 int main(int argc, char *argv[]) {
     test_empty_folder();
     test_add_subfolder();
