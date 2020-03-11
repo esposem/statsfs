@@ -91,12 +91,12 @@ struct statsfs_value test_all_aggr[6] = {
 
 #define def_val_s32 INT32_MIN
 #define def_val_bool true
-#define def_val_u8 120
+#define def_val_u8 127
 #define def_val_s16 10000
 
 #define def_val2_s32 INT16_MAX
 #define def_val2_bool false
-#define def_val2_u8 5
+#define def_val2_u8 255
 #define def_val2_s16 -20000
 
 
@@ -537,7 +537,7 @@ static void test_all_aggregations_agg_val_val()
 
     // avg
     n = statsfs_source_get_value_by_name(src, "u8", &ret);
-    assert(n == 0 && ret == 62);
+    assert(n == 0 && ret == 191);
 
     // max
     n = statsfs_source_get_value_by_name(src, "s16", &ret);
@@ -643,7 +643,7 @@ static void test_all_aggregations_agg_val_val_sub()
 
     // avg
     n = statsfs_source_get_value_by_name(src, "u8", &ret);
-    assert(n == 0 && ret == 62);
+    assert(n == 0 && ret == 191);
 
     // max
     n = statsfs_source_get_value_by_name(src, "s16", &ret);

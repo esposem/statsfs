@@ -80,7 +80,7 @@ void statsfs_source_destroy(struct statsfs_source *src)
     // iterate through the subordinates and delete them
     list_for_each_safe(it, safe, &src->subordinates_head) {
         src_entry = list_entry(it, struct statsfs_source, list_element);
-        statsfs_source_destroy(src_entry);
+        statsfs_source_put(src_entry);
     }
 
     free(src);

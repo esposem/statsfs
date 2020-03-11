@@ -11,13 +11,6 @@
 
 /* Helpers */
 
-#define SET_TYPE_CASE_TYPE(case_enum, type, value, ret)       \
-                case case_enum:                               \
-                case case_enum | STATSFS_SIGN:                \
-                    ret = *((type *) value);                  \
-                    break;
-
-
 #define SET_AGG_CASE_TYPE(case_enum, value, ret)       \
                 case case_enum:                        \
                     *ret = (uint64_t) value;           \
@@ -32,7 +25,7 @@ static int is_val_signed(struct statsfs_value *val)
     return val->type & STATSFS_SIGN;
 }
 
-static int compare_names(struct statsfs_value *v1, char *name)
+static inline int compare_names(struct statsfs_value *v1, char *name)
 {
     if (strcmp(v1->name, name) == 0) {
         return 1;
@@ -41,7 +34,7 @@ static int compare_names(struct statsfs_value *v1, char *name)
 }
 
 
-static int compare_refs(struct statsfs_value *v1, struct statsfs_value *el)
+static inline int compare_refs(struct statsfs_value *v1, struct statsfs_value *el)
 {
     if (el == v1) {
         assert(strcmp(v1->name, el->name) == 0);
@@ -132,11 +125,36 @@ static uint64_t get_correct_value(void *address, enum stat_type type)
     uint64_t value_found;
 
     switch (type) {
-        SET_TYPE_CASE_TYPE(STATSFS_U8, int8_t, address, value_found)
-        SET_TYPE_CASE_TYPE(STATSFS_U16, int16_t, address, value_found)
-        SET_TYPE_CASE_TYPE(STATSFS_U32, int32_t, address, value_found)
-        SET_TYPE_CASE_TYPE(STATSFS_U64, int64_t, address, value_found)
-        SET_TYPE_CASE_TYPE(STATSFS_BOOL, int8_t, address, value_found)
+        case STATSFS_U8:
+            value_found = *((uint8_t *) address);
+            break;
+        case STATSFS_U8 | STATSFS_SIGN:
+            value_found = *((int8_t *) address);
+            break;
+        case STATSFS_U16:
+            value_found = *((uint16_t *) address);
+            break;
+        case STATSFS_U16 | STATSFS_SIGN:
+            value_found = *((int16_t *) address);
+            break;
+        case STATSFS_U32:
+            value_found = *((uint32_t *) address);
+            break;
+        case STATSFS_U32 | STATSFS_SIGN:
+            value_found = *((int32_t *) address);
+            break;
+        case STATSFS_U64:
+            value_found = *((uint64_t *) address);
+            break;
+        case STATSFS_U64 | STATSFS_SIGN:
+            value_found = *((int64_t *) address);
+            break;
+        case STATSFS_BOOL:
+            value_found = *((uint8_t *) address);
+            break;
+        case STATSFS_BOOL | STATSFS_SIGN:
+            value_found = *((int8_t *) address);
+            break;
         default:
             value_found = 0;
             break;
@@ -213,9 +231,16 @@ static void set_final_value(struct statsfs_aggregate_value *agg,
                             uint64_t *ret)
 {
     int operation = val->aggr_kind | is_val_signed(val);
+    uint64_t value = 0;
+
+
     switch (operation) {
-        SET_AGG_CASE_TYPE(STATSFS_AVG,
-            agg->count ? agg->sum / agg->count : 0, ret)
+        case STATSFS_AVG:
+            *ret = (uint64_t) agg->count ? agg->sum / agg->count : 0;
+            break;
+        case STATSFS_AVG | STATSFS_SIGN:
+            *ret = (int64_t) agg->count ? ((int64_t) agg->sum) / agg->count : 0;
+            break;
         SET_AGG_CASE_TYPE(STATSFS_SUM, agg->sum, ret)
         SET_AGG_CASE_TYPE(STATSFS_MIN, agg->min, ret)
         SET_AGG_CASE_TYPE(STATSFS_MAX, agg->max, ret)
@@ -386,3 +411,4 @@ void add_statsfs_value_array(struct statsfs_value_array *arr,
 {
     arr->elements[arr->allocated++] = val;
 }
+

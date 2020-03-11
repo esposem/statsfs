@@ -78,4 +78,5 @@ int search_in_source_by_value(struct statsfs_source *source,
 void init_statsfs_value_array(struct statsfs_value_array *arr);
 void add_statsfs_value_array(struct statsfs_value_array *arr,
                              struct statsfs_value *val);
+
 #endif
