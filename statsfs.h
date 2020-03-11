@@ -44,12 +44,12 @@ struct statsfs_source *statsfs_source_create(const char *fmt, ...);
 void statsfs_source_destroy(struct statsfs_source *src);
 
 // returns how many values have been added
-int statsfs_source_add_values(struct statsfs_source *source,
+void statsfs_source_add_values(struct statsfs_source *source,
                                 const struct statsfs_value *stat,void *ptr);
 
 // returns how many aggregates have been added
-int statsfs_source_add_aggregate(struct statsfs_source *source,
-                                    const struct statsfs_value *stat);
+// void statsfs_source_add_aggregate(struct statsfs_source *source,
+//                                     const struct statsfs_value *stat);
 
 void statsfs_source_add_subordinate(struct statsfs_source *source,
                                     struct statsfs_source *sub);

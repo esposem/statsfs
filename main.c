@@ -13,7 +13,7 @@
 
 #define ARR_SIZE(el) (sizeof(el) / sizeof(struct statsfs_value) - 1)
 
-struct test_values {
+struct test_values_struct {
     uint64_t u64;
     int32_t s32;
     bool bo;
@@ -22,8 +22,8 @@ struct test_values {
 };
 
 struct container {
-    struct test_values vals;
-    struct test_values vals2;
+    struct test_values_struct vals;
+    struct test_values_struct vals2;
 };
 
 struct statsfs_value test_values[6] = {
@@ -156,16 +156,22 @@ static void test_add_value()
     int n;
 
     src = statsfs_source_create("parent");
-    n = statsfs_source_add_values(src, test_values, &cont);
+
+    // add values
+    statsfs_source_add_values(src, test_values, &cont);
+    n = get_number_values_with_base(src, &cont);
     assert(n == ARR_SIZE(test_values));
 
-    n = statsfs_source_add_values(src, test_values, &cont);
-    assert(n == 0);
-    // here same array given, so don't add TODO: intented behavior?
+    // add same values, nothing happens
+    statsfs_source_add_values(src, test_values, &cont);
+    n = get_number_values_with_base(src, &cont);
+    assert(n == ARR_SIZE(test_values));
+
+    // size is invaried
     assert(get_number_values(src) ==  ARR_SIZE(test_values));
 
-
-    n = statsfs_source_add_aggregate(src, test_values);
+    // no aggregates
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == 0);
     assert(get_number_values(src) ==  ARR_SIZE(test_values));
     assert(get_number_aggregates(src) == 0);
@@ -179,30 +185,42 @@ static void test_add_value_in_subfolder()
 
     src = statsfs_source_create("parent");
     sub = statsfs_source_create("child");
+
+    // src -> sub
     statsfs_source_add_subordinate(src, sub);
 
-    n = statsfs_source_add_values(sub, test_values, &cont);
+    // add values
+    statsfs_source_add_values(sub, test_values, &cont);
+    n = get_number_values_with_base(sub, &cont);
     assert(n == ARR_SIZE(test_values));
     assert(get_number_values(src) ==  0);
     assert(get_number_aggregates(src) == 0);
     assert(get_total_number_values(src) == ARR_SIZE(test_values));
 
     assert(get_number_values(sub) ==  ARR_SIZE(test_values));
+    // no values in sub
     assert(get_number_aggregates(sub) == 0);
 
+    // different folder
     sub_not = statsfs_source_create("not a child");
 
-    n = statsfs_source_add_values(sub_not, test_values, &cont);
+    // add values
+    statsfs_source_add_values(sub_not, test_values, &cont);
+    n = get_number_values_with_base(sub_not, &cont);
     assert(n == ARR_SIZE(test_values));
     assert(get_number_values(src) ==  0);
     assert(get_number_aggregates(src) == 0);
     assert(get_total_number_values(src) == ARR_SIZE(test_values));
 
+    // remove sub, check values is 0
     statsfs_source_remove_subordinate(src, sub);
     assert(get_total_number_values(src) == 0);
 
+    // re-add sub, check value are added
     statsfs_source_add_subordinate(src, sub);
     assert(get_total_number_values(src) == ARR_SIZE(test_values));
+
+    // add sub_not, check value are twice as many
     statsfs_source_add_subordinate(src, sub_not);
     assert(get_total_number_values(src) == ARR_SIZE(test_values) * 2);
 
@@ -219,8 +237,13 @@ static void test_search_value()
     int n;
 
     src = statsfs_source_create("parent");
-    n = statsfs_source_add_values(src, test_values, &cont);
+
+    // add values
+    statsfs_source_add_values(src, test_values, &cont);
+    n = get_number_values_with_base(src, &cont);
     assert(n == ARR_SIZE(test_values));
+
+    // get u64
     n = statsfs_source_get_value_by_name(src, "u64", &ret);
     assert(ret == def_u64 && n == 0);
 
@@ -230,8 +253,10 @@ static void test_search_value()
     n = statsfs_source_get_value_by_name(src, "bo", &ret);
     assert(((bool) ret) == def_val_bool && n == 0);
 
+    // get a non-added value
     n = statsfs_source_get_value_by_name(src, "does not exist", &ret);
     assert(ret == 0 && n == -ENOENT);
+
     statsfs_source_destroy(src);
 }
 
@@ -243,8 +268,13 @@ static void test_search_value_in_subfolder()
 
     src = statsfs_source_create("parent");
     sub = statsfs_source_create("child");
+
+    // src -> sub
     statsfs_source_add_subordinate(src, sub);
-    n = statsfs_source_add_values(sub, test_values, &cont);
+
+    // add values to sub
+    statsfs_source_add_values(sub, test_values, &cont);
+    n = get_number_values_with_base(sub, &cont);
     assert(n == ARR_SIZE(test_values));
 
     n = statsfs_source_get_value_by_name(sub, "u64", &ret);
@@ -303,16 +333,24 @@ static void test_add_aggregate()
     int n;
 
     src = statsfs_source_create("parent");
-    n = statsfs_source_add_values(src, test_aggr, &cont);
+
+    // add aggr to src, no values
+    statsfs_source_add_values(src, test_aggr, &cont);
+    n = get_number_values_with_base(src, &cont);
     assert(n == 0);
-    n = statsfs_source_add_aggregate(src, test_aggr);
+
+    // count values
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == ARR_SIZE(test_aggr));
-    n = statsfs_source_add_aggregate(src, test_aggr);
+
+    // add same array again, should not be added
+    statsfs_source_add_values(src, test_aggr, &cont);
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == ARR_SIZE(test_aggr));
 
     assert(get_number_values(src) ==  0);
-    // TODO: intended behavior?
-    assert(get_number_aggregates(src) == ARR_SIZE(test_aggr) * 2);
+    assert(get_number_aggregates(src) == ARR_SIZE(test_aggr));
+
     statsfs_source_destroy(src);
 }
 
@@ -323,9 +361,12 @@ static void test_add_aggregate_in_subfolder()
 
     src = statsfs_source_create("parent");
     sub = statsfs_source_create("child");
+    // src->sub
     statsfs_source_add_subordinate(src, sub);
 
-    n = statsfs_source_add_aggregate(sub, test_aggr);
+    // add aggr to sub
+    statsfs_source_add_values(sub, test_aggr, &cont);
+    n = get_number_aggr_with_base(sub, &cont);
     assert(n == ARR_SIZE(test_aggr));
     assert(get_number_values(src) ==  0);
     assert(get_number_aggregates(src) == 0);
@@ -334,17 +375,22 @@ static void test_add_aggregate_in_subfolder()
     assert(get_number_values(sub) ==  0);
     assert(get_number_aggregates(sub) == ARR_SIZE(test_aggr));
 
+    // not a child
     sub_not = statsfs_source_create("not a child");
 
-    n = statsfs_source_add_aggregate(sub_not, test_aggr);
+    // add aggr to "not a child"
+    statsfs_source_add_values(sub_not, test_aggr, &cont);
+    n = get_number_aggr_with_base(sub_not, &cont);
     assert(n == ARR_SIZE(test_aggr));
     assert(get_number_values(src) ==  0);
     assert(get_number_aggregates(src) == 0);
     assert(get_total_number_values(src) == 0);
 
+    // remove sub
     statsfs_source_remove_subordinate(src, sub);
     assert(get_total_number_values(src) == 0);
 
+    // re-add both
     statsfs_source_add_subordinate(src, sub);
     assert(get_total_number_values(src) == 0);
     statsfs_source_add_subordinate(src, sub_not);
@@ -364,7 +410,8 @@ static void test_search_aggregate()
     int n;
 
     src = statsfs_source_create("parent");
-    n = statsfs_source_add_aggregate(src, test_aggr);
+    statsfs_source_add_values(src, test_aggr, &cont);
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == ARR_SIZE(test_aggr));
     n = statsfs_source_get_value_by_name(src, "u64", &ret);
     assert(ret == 0 && n == 0);
@@ -389,8 +436,11 @@ static void test_search_aggregate_in_subfolder()
 
     src = statsfs_source_create("parent");
     sub = statsfs_source_create("child");
+
     statsfs_source_add_subordinate(src, sub);
-    n = statsfs_source_add_aggregate(sub, test_aggr);
+
+    statsfs_source_add_values(sub, test_aggr, &cont);
+    n = get_number_aggr_with_base(sub, &cont);
     assert(n == ARR_SIZE(test_aggr));
 
     // no u64 in test_aggr
@@ -424,10 +474,16 @@ void test_search_same()
     int n;
 
     src = statsfs_source_create("parent");
-    n = statsfs_source_add_values(src, test_same_name, &cont);
+    statsfs_source_add_values(src, test_same_name, &cont);
+    n = get_number_values_with_base(src, &cont);
+    assert(n == 1);
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == 1);
 
-    n = statsfs_source_add_aggregate(src, test_same_name);
+    statsfs_source_add_values(src, test_same_name, &cont);
+    n = get_number_values_with_base(src, &cont);
+    assert(n == 1);
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == 1);
 
     // returns first the value
@@ -444,14 +500,19 @@ static void test_add_mixed()
     int n;
 
     src = statsfs_source_create("parent");
-    n = statsfs_source_add_values(src, test_aggr, &cont);
-    assert(n == 0);
-    n = statsfs_source_add_aggregate(src, test_values);
-    assert(n == 0);
 
-    n = statsfs_source_add_values(src, test_values, &cont);
+    statsfs_source_add_values(src, test_aggr, &cont);
+    n = get_number_values_with_base(src, &cont);
+    assert(n == 0);
+    statsfs_source_add_values(src, test_values, &cont);
+    n = get_number_aggr_with_base(src, &cont);
+    assert(n == ARR_SIZE(test_aggr));
+
+    statsfs_source_add_values(src, test_values, &cont);
+    n = get_number_values_with_base(src, &cont);
     assert(n == ARR_SIZE(test_values));
-    n = statsfs_source_add_aggregate(src, test_aggr);
+    statsfs_source_add_values(src, test_aggr, &cont);
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == ARR_SIZE(test_aggr));
 
     assert(get_number_values(src) ==  ARR_SIZE(test_values));
@@ -470,9 +531,11 @@ static void test_search_mixed()
     statsfs_source_add_subordinate(src, sub);
 
     // src has the aggregates, sub the values. Just search
-    n = statsfs_source_add_values(sub, test_values, &cont);
+    statsfs_source_add_values(sub, test_values, &cont);
+    n = get_number_values_with_base(sub, &cont);
     assert(n == ARR_SIZE(test_values));
-    n = statsfs_source_add_aggregate(src, test_aggr);
+    statsfs_source_add_values(src, test_aggr, &cont);
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == ARR_SIZE(test_aggr));
 
     // u64 is sum so again same value
@@ -513,14 +576,17 @@ static void test_all_aggregations_agg_val_val()
     statsfs_source_add_subordinate(src, sub1);
     statsfs_source_add_subordinate(src, sub2);
 
-    n = statsfs_source_add_values(sub1, test_values, &cont);
+    statsfs_source_add_values(sub1, test_values, &cont);
+    n = get_number_values_with_base(sub1, &cont);
     assert(n == ARR_SIZE(test_values));
-    n = statsfs_source_add_values(sub2, test_values2, &cont);
+    statsfs_source_add_values(sub2, test_values2, &cont);
+    n = get_number_values_with_base(sub2, &cont);
     assert(n == ARR_SIZE(test_values));
 
     assert(get_total_number_values(src) == ARR_SIZE(test_values)*2);
 
-    n = statsfs_source_add_aggregate(src, test_all_aggr);
+    statsfs_source_add_values(src, test_all_aggr, &cont);
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == ARR_SIZE(test_all_aggr));
 
     // sum
@@ -559,14 +625,17 @@ static void test_all_aggregations_val_agg_val()
     statsfs_source_add_subordinate(src, sub1);
     statsfs_source_add_subordinate(src, sub2);
 
-    n = statsfs_source_add_values(src, test_values, &cont);
+    statsfs_source_add_values(src, test_values, &cont);
+    n = get_number_values_with_base(src, &cont);
     assert(n == ARR_SIZE(test_values));
-    n = statsfs_source_add_values(sub2, test_values2, &cont);
+    statsfs_source_add_values(sub2, test_values2, &cont);
+    n = get_number_values_with_base(sub2, &cont);
     assert(n == ARR_SIZE(test_values));
 
     assert(get_total_number_values(src) == ARR_SIZE(test_values)*2);
 
-    n = statsfs_source_add_aggregate(sub1, test_all_aggr);
+    statsfs_source_add_values(sub1, test_all_aggr, &cont);
+    n = get_number_aggr_with_base(sub1, &cont);
     assert(n == ARR_SIZE(test_all_aggr));
 
     n = statsfs_source_get_value_by_name(src, "u64", &ret);
@@ -619,14 +688,17 @@ static void test_all_aggregations_agg_val_val_sub()
     statsfs_source_add_subordinate(src, sub1);
     statsfs_source_add_subordinate(sub1, sub11); // changes here!
 
-    n = statsfs_source_add_values(sub1, test_values, &cont);
+    statsfs_source_add_values(sub1, test_values, &cont);
+    n = get_number_values_with_base(sub1, &cont);
     assert(n == ARR_SIZE(test_values));
-    n = statsfs_source_add_values(sub11, test_values2, &cont);
+    statsfs_source_add_values(sub11, test_values2, &cont);
+    n = get_number_values_with_base(sub11, &cont);
     assert(n == ARR_SIZE(test_values));
 
     assert(get_total_number_values(src) == ARR_SIZE(test_values)*2);
 
-    n = statsfs_source_add_aggregate(src, test_all_aggr);
+    statsfs_source_add_values(src, test_all_aggr, &cont);
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == ARR_SIZE(test_all_aggr));
 
     // sum
@@ -665,13 +737,15 @@ static void test_all_aggregations_agg_no_val_sub()
     statsfs_source_add_subordinate(src, sub1);
     statsfs_source_add_subordinate(sub1, sub11);
 
-    // changes here!
-    n = statsfs_source_add_values(sub11, test_values2, &cont);
+    // it changes from the previous here!
+    statsfs_source_add_values(sub11, test_values2, &cont);
+    n = get_number_values_with_base(sub11, &cont);
     assert(n == ARR_SIZE(test_values));
 
     assert(get_total_number_values(src) == ARR_SIZE(test_values));
 
-    n = statsfs_source_add_aggregate(src, test_all_aggr);
+    statsfs_source_add_values(src, test_all_aggr, &cont);
+    n = get_number_aggr_with_base(src, &cont);
     assert(n == ARR_SIZE(test_all_aggr));
 
     // sum

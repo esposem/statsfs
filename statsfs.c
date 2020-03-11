@@ -15,6 +15,76 @@
     - files
 */
 
+
+#define SET_AGG_CASE_TYPE(case_enum, value, ret)       \
+                case case_enum:                        \
+                    *ret = (uint64_t) value;           \
+                    break;                             \
+                case case_enum | STATSFS_SIGN:         \
+                    *ret = (int64_t) value;            \
+                    break;
+
+
+static int is_val_signed(struct statsfs_value *val)
+{
+    return val->type & STATSFS_SIGN;
+}
+
+
+static struct statsfs_value *_search_name_in_arr(
+                                        struct statsfs_value* src,
+                                        char *arg)
+{
+    struct statsfs_value *entry;
+    for (entry = src; entry->name; entry++) {
+        if (!strcmp(entry->name, arg)) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+
+static struct statsfs_value *_search_value_in_arr(
+                                        struct statsfs_value* src,
+                                        struct statsfs_value *arg)
+{
+    struct statsfs_value *entry;
+    for (entry = src; entry->name; entry++) {
+        if (entry == arg) {
+            BUG_ON(strcmp(entry->name, arg->name) == 0);
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+
+static struct statsfs_value *search_statsfs_in_source(
+                                    struct statsfs_source* src,
+                                    struct statsfs_value *arg,
+                                    struct statsfs_value_source **val_src,
+                                    uint8_t is_aggr)
+{
+    struct statsfs_value *entry;
+    struct statsfs_value_source *src_entry;
+    uint8_t is_entry_aggr;
+
+    list_for_each_entry(src_entry, &src->values_head, list_element) {
+        entry = _search_value_in_arr(src_entry->values, arg);
+        is_entry_aggr =  entry->aggr_kind != STATSFS_NONE;
+        if (entry && (is_entry_aggr == is_aggr)) {
+            if (val_src) {
+                *val_src = src_entry;
+            }
+            return entry;
+        }
+    }
+
+    return NULL;
+}
+
+
 void statsfs_source_register(struct statsfs_source *source) {
     // TODO: creates file /sys/kernel/statsfs/kvm
 }
@@ -45,10 +115,9 @@ struct statsfs_source *statsfs_source_create(const char *fmt, ...)
     ret->name[char_needed] = '\0';
 
     ret->refcount = 1; //TODO: fix for kernel
-    ret->simple_values_head = (struct list_head)
-                            LIST_HEAD_INIT(ret->simple_values_head);
+    ret->values_head = (struct list_head)
+                            LIST_HEAD_INIT(ret->values_head);
 
-    init_statsfs_value_array(&ret->aggr_values);
     ret->subordinates_head = (struct list_head)
                             LIST_HEAD_INIT(ret->subordinates_head);
     ret->list_element = (struct list_head) LIST_HEAD_INIT(ret->list_element);
@@ -59,93 +128,76 @@ struct statsfs_source *statsfs_source_create(const char *fmt, ...)
 
 void statsfs_source_destroy(struct statsfs_source *src)
 {
-    struct list_head *it, *safe;
-    struct statsfs_value_source *val_src_entry;
-    struct statsfs_source *src_entry;
-    assert(src != NULL);
-    // assert(src->refcount == 0); // TODO: kernel
-    free(src->name);
-    list_del(&src->list_element); // deletes it from the list he's in
-
-    // iterate through the values and delete them
-    list_for_each_safe(it, safe, &src->simple_values_head) {
-        val_src_entry = list_entry(it, struct statsfs_value_source,
-                                    list_element);
-        val_src_entry->values.allocated = 0;
-        free(val_src_entry);
-    }
-
-    src->aggr_values.allocated = 0;
-
-    // iterate through the subordinates and delete them
-    list_for_each_safe(it, safe, &src->subordinates_head) {
-        src_entry = list_entry(it, struct statsfs_source, list_element);
-        statsfs_source_put(src_entry);
-    }
-
-    free(src);
+    statsfs_source_put(src);
 }
 
 
-int statsfs_source_add_values(struct statsfs_source *source,
+static struct statsfs_value_source *search_value_source_by_base_and_source(
+                                    struct statsfs_source* src,
+                                    const struct statsfs_value *stat,
+                                    void *base)
+{
+    struct statsfs_value_source *entry;
+    list_for_each_entry(entry, &src->values_head, list_element) {
+        if (entry->base_addr == base && entry->values == stat) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+static struct statsfs_value_source *create_value_source(void *base)
+{
+    struct statsfs_value_source *val_src;
+
+    val_src = malloc(sizeof(struct statsfs_value_source));
+    if (!val_src) {
+        printf("Error in making the value source!\n");
+        return NULL;
+    }
+
+    val_src->base_addr = base;
+    val_src->list_element = (struct list_head)
+                                    LIST_HEAD_INIT(val_src->list_element);
+
+    return val_src;
+}
+
+void statsfs_source_add_values(struct statsfs_source *source,
                    const struct statsfs_value *stat, void *ptr)
 {
-    assert(source != NULL);
-    assert(ptr != NULL);
+    BUG_ON(source != NULL);
+    BUG_ON(ptr != NULL);
 
     struct statsfs_value_source *val_src;
     int count = 0;
 
-    val_src = search_value_source_by_base(source, ptr);
+    val_src = search_value_source_by_base_and_source(source, stat, ptr);
     if (!val_src) {
         val_src = create_value_source(ptr);
+        val_src->values = (struct statsfs_value *) stat;
         // add the val_src to the source list
-        list_add(&val_src->list_element, &source->simple_values_head);
+        list_add(&val_src->list_element, &source->values_head);
     }
 
-    struct statsfs_value *p, *same;
-    for(p = (struct statsfs_value *) stat; p->name; p++) {
-        same = search_in_value_source_by_name(val_src, p->name);
-        if (!same && p->aggr_kind == STATSFS_NONE) {
-            // add the val to the val_src list
-            add_statsfs_value_array(&val_src->values, p);
-            count++;
-        }
-    }
-    // printf("statsfs_source_add_values on %s\n", source->name);
-    // statsfs_values_debug_list(source);
-    return count;
 }
 
 
-int statsfs_source_add_aggregate(struct statsfs_source *source,
-                                const struct statsfs_value *stat)
-{
-    assert(source != NULL);
-    struct statsfs_value *p;
-    int count = 0;
-    for(p = (struct statsfs_value *) stat; p->name; p++) {
-        if (p->aggr_kind != STATSFS_NONE) {
-            add_statsfs_value_array(&source->aggr_values, p);
-            count++;
-        }
-    }
-    // printf("statsfs_source_add_aggregates on %s\n", source->name);
-    // statsfs_values_debug_list(source);
-
-    return count;
-}
+// void statsfs_source_add_aggregate(struct statsfs_source *source,
+//                                 const struct statsfs_value *stat)
+// {
+//     statsfs_source_add_values(source, stat, NULL);
+// }
 
 
 void statsfs_source_add_subordinate(
                 struct statsfs_source *source,
                 struct statsfs_source *sub)
 {
-    assert(source != NULL);
-    assert(sub != NULL);
+    BUG_ON(source != NULL);
+    BUG_ON(sub != NULL);
+    statsfs_source_get(sub);
     list_add(&sub->list_element, &source->subordinates_head);
-    // printf("statsfs_source_add_subordinate on %s\n", source->name);
-    // statsfs_subordinates_debug_list(source);
 }
 
 
@@ -157,19 +209,220 @@ void statsfs_source_remove_subordinate(
     struct list_head *it, *safe;
     struct statsfs_source *src_entry;
 
-    assert(source != NULL);
-    assert(sub != NULL);
+    BUG_ON(source != NULL);
+    BUG_ON(sub != NULL);
 
     list_for_each_safe(it, safe, &source->subordinates_head) {
         src_entry = list_entry(it, struct statsfs_source, list_element);
         if (src_entry == sub) {
-            assert(strcmp(src_entry->name, sub->name) == 0);
+            BUG_ON(strcmp(src_entry->name, sub->name) == 0);
             list_del_init(&src_entry->list_element);
+            statsfs_source_put(src_entry);
             return;
         }
     }
 
     printf("WARINING: Subordinate %s not found in %s\n", sub->name, source->name);
+}
+
+
+static struct statsfs_value *search_value_in_source(
+                                    struct statsfs_source* src,
+                                    struct statsfs_value *arg,
+                                    struct statsfs_value_source **val_src)
+{
+    return search_statsfs_in_source(src, arg, val_src, 0);
+}
+
+
+static uint64_t get_correct_value(void *address, enum stat_type type)
+{
+    uint64_t value_found;
+
+    switch (type) {
+        case STATSFS_U8:
+            value_found = *((uint8_t *) address);
+            break;
+        case STATSFS_U8 | STATSFS_SIGN:
+            value_found = *((int8_t *) address);
+            break;
+        case STATSFS_U16:
+            value_found = *((uint16_t *) address);
+            break;
+        case STATSFS_U16 | STATSFS_SIGN:
+            value_found = *((int16_t *) address);
+            break;
+        case STATSFS_U32:
+            value_found = *((uint32_t *) address);
+            break;
+        case STATSFS_U32 | STATSFS_SIGN:
+            value_found = *((int32_t *) address);
+            break;
+        case STATSFS_U64:
+            value_found = *((uint64_t *) address);
+            break;
+        case STATSFS_U64 | STATSFS_SIGN:
+            value_found = *((int64_t *) address);
+            break;
+        case STATSFS_BOOL:
+            value_found = *((uint8_t *) address);
+            break;
+        case STATSFS_BOOL | STATSFS_SIGN:
+            value_found = *((int8_t *) address);
+            break;
+        default:
+            value_found = 0;
+            break;
+    }
+
+    return value_found;
+}
+
+
+static void search_all_simple_values(struct statsfs_source* src,
+                                struct statsfs_aggregate_value *agg,
+                                struct statsfs_value *val)
+{
+    struct statsfs_value *entry;
+    struct statsfs_value_source *src_entry;
+    uint64_t value_found;
+    void *address;
+    list_for_each_entry(src_entry, &src->values_head, list_element) {
+        entry = _search_name_in_arr(src_entry->values, val->name);
+        if (entry && entry->aggr_kind == STATSFS_NONE) { // found
+            address = src_entry->base_addr + entry->offset;
+            value_found = get_correct_value(address, val->type);
+            agg->sum += value_found;
+            agg->count++;
+            agg->count_zero += (value_found == 0);
+
+            if(is_val_signed(val)){
+                agg->max = (((int64_t) value_found) >= ((int64_t) agg->max)) ?
+                             value_found : agg->max;
+                agg->min = (((int64_t) value_found) <= ((int64_t) agg->min)) ?
+                             value_found : agg->min;
+            } else {
+                agg->max = (value_found >= agg->max) ? value_found : agg->max;
+                agg->min = (value_found <= agg->min) ? value_found : agg->min;
+            }
+        }
+    }
+}
+
+static void do_recursive_aggregation(struct statsfs_source *root,
+                                struct statsfs_value *val,
+                                struct statsfs_aggregate_value *agg)
+{
+    struct statsfs_source *subordinate;
+
+    // search all simple values in this folder
+    search_all_simple_values(root, agg, val);
+
+    // recursively search in all subfolders
+    list_for_each_entry(subordinate, &root->subordinates_head,
+                            list_element) {
+        do_recursive_aggregation(subordinate, val, agg);
+    }
+}
+
+
+static void init_aggregate_value(struct statsfs_aggregate_value *agg,
+                                struct statsfs_value *val)
+{
+    agg->count = agg->count_zero = agg->sum = 0;
+    if (is_val_signed(val)){
+        agg->max =  INT64_MIN;
+        agg->min =  INT64_MAX;
+    } else {
+        agg->max = 0;
+        agg->min = UINT64_MAX;
+    }
+}
+
+
+static void set_final_value(struct statsfs_aggregate_value *agg,
+                            struct statsfs_value *val,
+                            uint64_t *ret)
+{
+    int operation = val->aggr_kind | is_val_signed(val);
+    uint64_t value = 0;
+
+
+    switch (operation) {
+        case STATSFS_AVG:
+            *ret = (uint64_t) agg->count ? agg->sum / agg->count : 0;
+            break;
+        case STATSFS_AVG | STATSFS_SIGN:
+            *ret = (int64_t) agg->count ? ((int64_t) agg->sum) / agg->count : 0;
+            break;
+        SET_AGG_CASE_TYPE(STATSFS_SUM, agg->sum, ret)
+        SET_AGG_CASE_TYPE(STATSFS_MIN, agg->min, ret)
+        SET_AGG_CASE_TYPE(STATSFS_MAX, agg->max, ret)
+        SET_AGG_CASE_TYPE(STATSFS_COUNT_ZERO, agg->count_zero, ret)
+    default:
+        break;
+    }
+}
+
+
+static struct statsfs_value *search_in_value_source_by_name(
+                                struct statsfs_value_source * src,
+                                char *val)
+{
+    return _search_name_in_arr(src->values, val);
+}
+
+
+static struct statsfs_value *search_in_value_source_by_val(
+                                struct statsfs_value_source * src,
+                                struct statsfs_value * val)
+{
+    return _search_value_in_arr(src->values, val);
+}
+
+
+static struct statsfs_value *search_aggr_in_source_by_val(
+                                    struct statsfs_source* src,
+                                    struct statsfs_value *val)
+{
+    return search_statsfs_in_source(src, val, NULL, 1);
+}
+
+static int search_in_source_by_value(struct statsfs_source *source,
+                            struct statsfs_value *arg,
+                            uint64_t *ret)
+{
+    struct statsfs_value_source *entry;
+    struct statsfs_value *found;
+    struct statsfs_aggregate_value aggr;
+    void *address;
+    BUG_ON(ret != NULL);
+    BUG_ON(source != NULL);
+
+    if (!arg) {
+        return -ENOENT;
+    }
+
+     // look in simple values
+    found = search_value_in_source(source, arg, &entry);
+    if (found) {
+        address = entry->base_addr + found->offset;
+        *ret = get_correct_value(address, found->type);
+        return 0;
+    }
+
+    // look in aggregates
+    found = search_aggr_in_source_by_val(source, arg);
+    if (found) {
+        BUG_ON(found->aggr_kind != STATSFS_NONE);
+        init_aggregate_value(&aggr, found);
+        do_recursive_aggregation(source, found, &aggr);
+        set_final_value(&aggr, found, ret);
+        return 0;
+    }
+
+    printf("ERROR: Value in source \"%s\" not found!\n", source->name);
+    return -ENOENT;
 }
 
 
@@ -180,6 +433,23 @@ int statsfs_source_get_value_by_val(
     return search_in_source_by_value(source, val, ret);
 }
 
+
+
+static struct statsfs_value *search_in_source_by_name(struct statsfs_source* src,
+                                                char *name)
+{
+    struct statsfs_value *entry;
+    struct statsfs_value_source *src_entry;
+
+    list_for_each_entry(src_entry, &src->values_head, list_element) {
+        entry = _search_name_in_arr(src_entry->values, name);
+        if (entry) {
+            return entry;
+        }
+    }
+
+    return NULL;
+}
 
 int statsfs_source_get_value_by_name(
                 struct statsfs_source *source,
@@ -192,16 +462,12 @@ int statsfs_source_get_value_by_name(
     val = search_in_source_by_name(source, name);
 
     if (!val) {
-        // search in my aggregates
-        val = search_aggr_in_source_by_name(source, name);
-    }
-
-    if (!val) {
         return -ENOENT;
     }
-
+    // printf("Found %s %d\n", val->name, val->aggr_kind);
     return statsfs_source_get_value_by_val(source, val, ret);
 }
+
 
 void statsfs_source_get(struct statsfs_source *source)
 {
@@ -212,11 +478,34 @@ void statsfs_source_get(struct statsfs_source *source)
 
 void statsfs_source_put(struct statsfs_source *source)
 {
+    struct list_head *it, *safe;
+    struct statsfs_value_source *val_src_entry;
+    struct statsfs_source *src_entry;
+    BUG_ON(source != NULL);
+
     // TODO: fix for kernel
-    if (source->refcount) {
-        source->refcount--;
-        if (source->refcount == 0) {
-            statsfs_source_destroy(source);
+    if (!source->refcount) {
+        return;
+    }
+    source->refcount--;
+
+    if (source->refcount == 0) {
+        free(source->name);
+        list_del(&source->list_element); // deletes it from the list he's in
+
+        // iterate through the values and delete them
+        list_for_each_safe(it, safe, &source->values_head) {
+            val_src_entry = list_entry(it, struct statsfs_value_source,
+                                        list_element);
+            free(val_src_entry);
         }
+
+        // iterate through the subordinates and delete them
+        list_for_each_safe(it, safe, &source->subordinates_head) {
+            src_entry = list_entry(it, struct statsfs_source, list_element);
+            statsfs_source_put(src_entry);
+        }
+
+        free(source);
     }
 }
