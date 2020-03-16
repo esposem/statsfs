@@ -46,18 +46,23 @@ static struct statsfs_value *find_value(struct statsfs_value_source *src,
 	return NULL;
 }
 
+// search for an entry == arg in source
 static struct statsfs_value *
 search_statsfs_in_source(struct statsfs_source *src, struct statsfs_value *arg,
 			 struct statsfs_value_source **val_src, uint8_t is_aggr)
 {
 	struct statsfs_value *entry;
 	struct statsfs_value_source *src_entry;
-	uint8_t is_entry_aggr;
+	uint8_t is_entry_ok;
 
 	list_for_each_entry (src_entry, &src->values_head, list_element) {
+		is_entry_ok = (src_entry->base_addr != 0) ^ is_aggr;
+		if (!is_entry_ok) {
+			continue;
+		}
+
 		entry = find_value(src_entry, arg);
-		is_entry_aggr = entry->aggr_kind != STATSFS_NONE;
-		if (entry && (is_entry_aggr == is_aggr)) {
+		if (entry) {
 			if (val_src) {
 				*val_src = src_entry;
 			}
@@ -133,7 +138,6 @@ int statsfs_source_add_values(struct statsfs_source *source,
 			      const struct statsfs_value *stat, void *ptr)
 {
 	BUG_ON(source != NULL);
-	BUG_ON(ptr != NULL);
 
 	struct statsfs_value_source *val_src;
 	struct statsfs_value_source *entry;
@@ -192,11 +196,15 @@ search_value_in_source(struct statsfs_source *src, struct statsfs_value *arg,
 	return search_statsfs_in_source(src, arg, val_src, 0);
 }
 
-static uint64_t get_correct_value(void *address, enum stat_type type)
+static uint64_t get_correct_value(struct statsfs_value_source *src,
+				  struct statsfs_value *val)
 {
 	uint64_t value_found;
+	void *address;
 
-	switch (type) {
+	address = src->base_addr + val->offset;
+
+	switch (val->type) {
 	case STATSFS_U8:
 		value_found = *((uint8_t *)address);
 		break;
@@ -234,56 +242,60 @@ static uint64_t get_correct_value(void *address, enum stat_type type)
 
 static void search_all_simple_values(struct statsfs_source *src,
 				     struct statsfs_aggregate_value *agg,
+				     struct statsfs_value_source *ref_src_entry,
 				     struct statsfs_value *val)
 {
-	struct statsfs_value *entry;
 	struct statsfs_value_source *src_entry;
 	uint64_t value_found;
-	void *address;
 
 	list_for_each_entry (src_entry, &src->values_head, list_element) {
-		entry = find_value_by_name(src_entry, val->name);
-		if (entry && entry->aggr_kind == STATSFS_NONE) { // found
-			address = src_entry->base_addr + entry->offset;
-			value_found = get_correct_value(address, val->type);
-			agg->sum += value_found;
-			agg->count++;
-			agg->count_zero += (value_found == 0);
+		if (src_entry->base_addr == NULL) { // skip aggregates
+			continue;
+		}
 
-			if (is_val_signed(val)) {
-				agg->max = (((int64_t)value_found) >=
-					    ((int64_t)agg->max)) ?
-						   value_found :
-						   agg->max;
-				agg->min = (((int64_t)value_found) <=
-					    ((int64_t)agg->min)) ?
-						   value_found :
-						   agg->min;
-			} else {
-				agg->max = (value_found >= agg->max) ?
-						   value_found :
-						   agg->max;
-				agg->min = (value_found <= agg->min) ?
-						   value_found :
-						   agg->min;
-			}
+		// useless to search here
+		if (src_entry->values != ref_src_entry->values) {
+			continue;
+		}
+
+		// must be here
+		value_found = get_correct_value(src_entry, val);
+		agg->sum += value_found;
+		agg->count++;
+		agg->count_zero += (value_found == 0);
+
+		if (is_val_signed(val)) {
+			agg->max = (((int64_t)value_found) >=
+				    ((int64_t)agg->max)) ?
+					   value_found :
+					   agg->max;
+			agg->min = (((int64_t)value_found) <=
+				    ((int64_t)agg->min)) ?
+					   value_found :
+					   agg->min;
+		} else {
+			agg->max = (value_found >= agg->max) ? value_found :
+							       agg->max;
+			agg->min = (value_found <= agg->min) ? value_found :
+							       agg->min;
 		}
 	}
 }
 
 static void do_recursive_aggregation(struct statsfs_source *root,
 				     struct statsfs_value *val,
+				     struct statsfs_value_source *ref_src_entry,
 				     struct statsfs_aggregate_value *agg)
 {
 	struct statsfs_source *subordinate;
 
 	// search all simple values in this folder
-	search_all_simple_values(root, agg, val);
+	search_all_simple_values(root, agg, ref_src_entry, val);
 
 	// recursively search in all subfolders
 	list_for_each_entry (subordinate, &root->subordinates_head,
 			     list_element) {
-		do_recursive_aggregation(subordinate, val, agg);
+		do_recursive_aggregation(subordinate, val, ref_src_entry, agg);
 	}
 }
 
@@ -334,19 +346,18 @@ static void set_final_value(struct statsfs_aggregate_value *agg,
 }
 
 static struct statsfs_value *
-search_aggr_in_source_by_val(struct statsfs_source *src,
-			     struct statsfs_value *val)
+search_aggr_in_source(struct statsfs_source *src, struct statsfs_value *val,
+		      struct statsfs_value_source **val_src)
 {
-	return search_statsfs_in_source(src, val, NULL, 1);
+	return search_statsfs_in_source(src, val, val_src, 1);
 }
 
 int statsfs_source_get_value(struct statsfs_source *source,
 			     struct statsfs_value *arg, uint64_t *ret)
 {
-	struct statsfs_value_source *entry;
+	struct statsfs_value_source *src_entry;
 	struct statsfs_value *found;
 	struct statsfs_aggregate_value aggr;
-	void *address;
 	BUG_ON(ret != NULL);
 	BUG_ON(source != NULL);
 
@@ -355,19 +366,19 @@ int statsfs_source_get_value(struct statsfs_source *source,
 	}
 
 	// look in simple values
-	found = search_value_in_source(source, arg, &entry);
+	found = search_value_in_source(source, arg, &src_entry);
 	if (found) {
-		address = entry->base_addr + found->offset;
-		*ret = get_correct_value(address, found->type);
+		*ret = get_correct_value(src_entry, found);
 		return 0;
 	}
 
 	// look in aggregates
-	found = search_aggr_in_source_by_val(source, arg);
+	found = search_aggr_in_source(source, arg, &src_entry);
 	if (found) {
 		BUG_ON(found->aggr_kind != STATSFS_NONE);
+		BUG_ON(src_entry->base_addr == NULL);
 		init_aggregate_value(&aggr, found);
-		do_recursive_aggregation(source, found, &aggr);
+		do_recursive_aggregation(source, found, src_entry, &aggr);
 		set_final_value(&aggr, found, ret);
 		return 0;
 	}

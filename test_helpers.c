@@ -9,14 +9,14 @@
 #include "test_helpers.h"
 
 static void get_stats_at_addr(struct statsfs_source *src, void *addr, int *aggr,
-			      int *val)
+			      int *val, int use_addr)
 {
 	struct statsfs_value *entry;
 	struct statsfs_value_source *src_entry;
 	int counter_val = 0, counter_aggr = 0;
 
 	list_for_each_entry (src_entry, &src->values_head, list_element) {
-		if (addr && src_entry->base_addr != addr) {
+		if (use_addr && src_entry->base_addr != addr) {
 			continue;
 		}
 
@@ -62,7 +62,7 @@ int get_number_subsources(struct statsfs_source *src)
 int get_number_values(struct statsfs_source *src)
 {
 	int counter = 0;
-	get_stats_at_addr(src, NULL, NULL, &counter);
+	get_stats_at_addr(src, NULL, NULL, &counter, 0);
 	return counter;
 }
 
@@ -72,7 +72,7 @@ int get_total_number_values(struct statsfs_source *src)
 	int counter = 0;
 	// printf("Given src %s\n", src->name);
 
-	get_stats_at_addr(src, NULL, NULL, &counter);
+	get_stats_at_addr(src, NULL, NULL, &counter, 0);
 
 	list_for_each_entry (sub_entry, &src->subordinates_head, list_element) {
 		counter += get_total_number_values(sub_entry);
@@ -84,20 +84,20 @@ int get_total_number_values(struct statsfs_source *src)
 int get_number_aggregates(struct statsfs_source *src)
 {
 	int counter = 0;
-	get_stats_at_addr(src, NULL, &counter, NULL);
+	get_stats_at_addr(src, NULL, &counter, NULL, 1);
 	return counter;
 }
 
 int get_number_values_with_base(struct statsfs_source *src, void *addr)
 {
 	int counter = 0;
-	get_stats_at_addr(src, addr, NULL, &counter);
+	get_stats_at_addr(src, addr, NULL, &counter, 1);
 	return counter;
 }
 
 int get_number_aggr_with_base(struct statsfs_source *src, void *addr)
 {
 	int counter = 0;
-	get_stats_at_addr(src, addr, &counter, NULL);
+	get_stats_at_addr(src, addr, &counter, NULL, 1);
 	return counter;
 }

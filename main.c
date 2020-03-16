@@ -45,15 +45,15 @@ struct statsfs_value test_values[6] = {
 };
 
 struct statsfs_value test_values2[6] = {
-	STATSFS_STAT(vals2, u64, .type = STATSFS_U64, .aggr_kind = STATSFS_NONE,
+	STATSFS_STAT(vals, u64, .type = STATSFS_U64, .aggr_kind = STATSFS_NONE,
 		     .mode = 0),
-	STATSFS_STAT(vals2, s32, .type = STATSFS_S32, .aggr_kind = STATSFS_NONE,
+	STATSFS_STAT(vals, s32, .type = STATSFS_S32, .aggr_kind = STATSFS_NONE,
 		     .mode = 0),
-	STATSFS_STAT(vals2, bo, .type = STATSFS_BOOL, .aggr_kind = STATSFS_NONE,
+	STATSFS_STAT(vals, bo, .type = STATSFS_BOOL, .aggr_kind = STATSFS_NONE,
 		     .mode = 0),
-	STATSFS_STAT(vals2, u8, .type = STATSFS_U8, .aggr_kind = STATSFS_NONE,
+	STATSFS_STAT(vals, u8, .type = STATSFS_U8, .aggr_kind = STATSFS_NONE,
 		     .mode = 0),
-	STATSFS_STAT(vals2, s16, .type = STATSFS_S16, .aggr_kind = STATSFS_NONE,
+	STATSFS_STAT(vals, s16, .type = STATSFS_S16, .aggr_kind = STATSFS_NONE,
 		     .mode = 0),
 	{ NULL },
 };
@@ -111,7 +111,18 @@ struct container cont = {
 			.u8 = def_val_u8,
 			.s16 = def_val_s16,
 		},
-	.vals2 =
+	// .vals2 =
+	// 	{
+	// 		.u64 = def_u64,
+	// 		.s32 = def_val2_s32,
+	// 		.bo = def_val2_bool,
+	// 		.u8 = def_val2_u8,
+	// 		.s16 = def_val2_s16,
+	// 	},
+};
+
+struct container cont2 = {
+	.vals =
 		{
 			.u64 = def_u64,
 			.s32 = def_val2_s32,
@@ -344,19 +355,19 @@ static void test_add_aggregate()
 	src = statsfs_source_create("parent");
 
 	// add aggr to src, no values
-	n = statsfs_source_add_values(src, test_aggr, &cont);
+	n = statsfs_source_add_values(src, test_aggr, NULL);
 	assert(n == 0);
-	n = get_number_values_with_base(src, &cont);
+	n = get_number_values_with_base(src, NULL);
 	assert(n == 0);
 
 	// count values
-	n = get_number_aggr_with_base(src, &cont);
+	n = get_number_aggr_with_base(src, NULL);
 	assert(n == ARR_SIZE(test_aggr));
 
 	// add same array again, should not be added
-	n = statsfs_source_add_values(src, test_aggr, &cont);
+	n = statsfs_source_add_values(src, test_aggr, NULL);
 	assert(n == -EEXIST);
-	n = get_number_aggr_with_base(src, &cont);
+	n = get_number_aggr_with_base(src, NULL);
 	assert(n == ARR_SIZE(test_aggr));
 
 	assert(get_number_values(src) == 0);
@@ -376,9 +387,9 @@ static void test_add_aggregate_in_subfolder()
 	statsfs_source_add_subordinate(src, sub);
 
 	// add aggr to sub
-	n = statsfs_source_add_values(sub, test_aggr, &cont);
+	n = statsfs_source_add_values(sub, test_aggr, NULL);
 	assert(n == 0);
-	n = get_number_aggr_with_base(sub, &cont);
+	n = get_number_aggr_with_base(sub, NULL);
 	assert(n == ARR_SIZE(test_aggr));
 	assert(get_number_values(src) == 0);
 	assert(get_number_aggregates(src) == 0);
@@ -391,9 +402,9 @@ static void test_add_aggregate_in_subfolder()
 	sub_not = statsfs_source_create("not a child");
 
 	// add aggr to "not a child"
-	n = statsfs_source_add_values(sub_not, test_aggr, &cont);
+	n = statsfs_source_add_values(sub_not, test_aggr, NULL);
 	assert(n == 0);
-	n = get_number_aggr_with_base(sub_not, &cont);
+	n = get_number_aggr_with_base(sub_not, NULL);
 	assert(n == ARR_SIZE(test_aggr));
 	assert(get_number_values(src) == 0);
 	assert(get_number_aggregates(src) == 0);
@@ -422,15 +433,16 @@ static void test_search_aggregate()
 	int n;
 
 	src = statsfs_source_create("parent");
-	n = statsfs_source_add_values(src, test_aggr, &cont);
+	n = statsfs_source_add_values(src, test_aggr, NULL);
 	assert(n == 0);
-	n = get_number_aggr_with_base(src, &cont);
+	n = get_number_aggr_with_base(src, NULL);
 	assert(n == ARR_SIZE(test_aggr));
+	n = get_number_aggr_with_base(src, &cont);
+	assert(n == 0);
 	n = statsfs_source_get_value_by_name(src, "u64", &ret);
 	assert(ret == 0 && n == 0);
 
 	n = statsfs_source_get_value_by_name(src, "s32", &ret);
-	// it's a min so nothing found, return INT_MAX TODO: intended behav?
 	assert(ret == INT64_MAX && n == 0);
 
 	n = statsfs_source_get_value_by_name(src, "bo", &ret);
@@ -452,10 +464,12 @@ static void test_search_aggregate_in_subfolder()
 
 	statsfs_source_add_subordinate(src, sub);
 
-	n = statsfs_source_add_values(sub, test_aggr, &cont);
+	n = statsfs_source_add_values(sub, test_aggr, NULL);
 	assert(n == 0);
-	n = get_number_aggr_with_base(sub, &cont);
+	n = get_number_aggr_with_base(sub, NULL);
 	assert(n == ARR_SIZE(test_aggr));
+	n = get_number_aggr_with_base(sub, &cont);
+	assert(n == 0);
 
 	// no u64 in test_aggr
 	n = statsfs_source_get_value_by_name(sub, "u64", &ret);
@@ -464,7 +478,7 @@ static void test_search_aggregate_in_subfolder()
 	assert(ret == 0 && n == -ENOENT);
 
 	n = statsfs_source_get_value_by_name(sub, "s32", &ret);
-	assert(ret == INT64_MAX && n == 0); //TODO: same as prev test
+	assert(ret == INT64_MAX && n == 0);
 	n = statsfs_source_get_value_by_name(src, "s32", &ret);
 	assert(ret == 0 && n == -ENOENT);
 
@@ -516,22 +530,22 @@ static void test_add_mixed()
 
 	src = statsfs_source_create("parent");
 
-	n = statsfs_source_add_values(src, test_aggr, &cont);
+	n = statsfs_source_add_values(src, test_aggr, NULL);
 	assert(n == 0);
-	n = get_number_values_with_base(src, &cont);
+	n = get_number_values_with_base(src, NULL);
 	assert(n == 0);
 	n = statsfs_source_add_values(src, test_values, &cont);
 	assert(n == 0);
-	n = get_number_aggr_with_base(src, &cont);
+	n = get_number_aggr_with_base(src, NULL);
 	assert(n == ARR_SIZE(test_aggr));
 
 	n = statsfs_source_add_values(src, test_values, &cont);
 	assert(n == -EEXIST);
 	n = get_number_values_with_base(src, &cont);
 	assert(n == ARR_SIZE(test_values));
-	n = statsfs_source_add_values(src, test_aggr, &cont);
+	n = statsfs_source_add_values(src, test_aggr, NULL);
 	assert(n == -EEXIST);
-	n = get_number_aggr_with_base(src, &cont);
+	n = get_number_aggr_with_base(src, NULL);
 	assert(n == ARR_SIZE(test_aggr));
 
 	assert(get_number_values(src) == ARR_SIZE(test_values));
@@ -597,20 +611,20 @@ static void test_all_aggregations_agg_val_val()
 	statsfs_source_add_subordinate(src, sub1);
 	statsfs_source_add_subordinate(src, sub2);
 
-	n = statsfs_source_add_values(sub1, test_values, &cont);
+	n = statsfs_source_add_values(sub1, test_all_aggr, &cont);
 	assert(n == 0);
-	n = get_number_values_with_base(sub1, &cont);
-	assert(n == ARR_SIZE(test_values));
-	n = statsfs_source_add_values(sub2, test_values2, &cont);
+	n = get_number_aggr_with_base(sub1, &cont);
+	assert(n == ARR_SIZE(test_all_aggr));
+	n = statsfs_source_add_values(sub2, test_all_aggr, &cont2);
 	assert(n == 0);
-	n = get_number_values_with_base(sub2, &cont);
-	assert(n == ARR_SIZE(test_values));
+	n = get_number_aggr_with_base(sub2, &cont2);
+	assert(n == ARR_SIZE(test_all_aggr));
 
-	assert(get_total_number_values(src) == ARR_SIZE(test_values) * 2);
+	// assert(get_number_aggregates(src) == ARR_SIZE(test_all_aggr) * 2);
 
-	n = statsfs_source_add_values(src, test_all_aggr, &cont);
+	n = statsfs_source_add_values(src, test_all_aggr, NULL);
 	assert(n == 0);
-	n = get_number_aggr_with_base(src, &cont);
+	n = get_number_aggr_with_base(src, NULL);
 	assert(n == ARR_SIZE(test_all_aggr));
 
 	// sum
@@ -647,20 +661,20 @@ static void test_all_aggregations_val_agg_val()
 	statsfs_source_add_subordinate(src, sub1);
 	statsfs_source_add_subordinate(src, sub2);
 
-	n = statsfs_source_add_values(src, test_values, &cont);
+	n = statsfs_source_add_values(src, test_all_aggr, &cont);
 	assert(n == 0);
-	n = get_number_values_with_base(src, &cont);
-	assert(n == ARR_SIZE(test_values));
-	n = statsfs_source_add_values(sub2, test_values2, &cont);
+	n = get_number_aggr_with_base(src, &cont);
+	assert(n == ARR_SIZE(test_all_aggr));
+	n = statsfs_source_add_values(sub2, test_all_aggr, &cont2);
 	assert(n == 0);
-	n = get_number_values_with_base(sub2, &cont);
-	assert(n == ARR_SIZE(test_values));
+	n = get_number_aggr_with_base(sub2, &cont2);
+	assert(n == ARR_SIZE(test_all_aggr));
 
-	assert(get_total_number_values(src) == ARR_SIZE(test_values) * 2);
+	// assert(get_total_number_values(src) == ARR_SIZE(test_values) * 2);
 
-	n = statsfs_source_add_values(sub1, test_all_aggr, &cont);
+	n = statsfs_source_add_values(sub1, test_all_aggr, NULL);
 	assert(n == 0);
-	n = get_number_aggr_with_base(sub1, &cont);
+	n = get_number_aggr_with_base(sub1, NULL);
 	assert(n == ARR_SIZE(test_all_aggr));
 
 	n = statsfs_source_get_value_by_name(src, "u64", &ret);
@@ -717,16 +731,25 @@ static void test_all_aggregations_agg_val_val_sub()
 	assert(n == 0);
 	n = get_number_values_with_base(sub1, &cont);
 	assert(n == ARR_SIZE(test_values));
-	n = statsfs_source_add_values(sub11, test_values2, &cont);
+	n = statsfs_source_add_values(sub11, test_values, &cont2);
 	assert(n == 0);
-	n = get_number_values_with_base(sub11, &cont);
+	n = get_number_values_with_base(sub11, &cont2);
 	assert(n == ARR_SIZE(test_values));
 
 	assert(get_total_number_values(src) == ARR_SIZE(test_values) * 2);
 
-	n = statsfs_source_add_values(src, test_all_aggr, &cont);
+	n = statsfs_source_add_values(sub1, test_all_aggr, &cont);
 	assert(n == 0);
-	n = get_number_aggr_with_base(src, &cont);
+	n = get_number_aggr_with_base(sub1, &cont);
+	assert(n == ARR_SIZE(test_all_aggr));
+	n = statsfs_source_add_values(sub11, test_all_aggr, &cont2);
+	assert(n == 0);
+	n = get_number_aggr_with_base(sub11, &cont2);
+	assert(n == ARR_SIZE(test_all_aggr));
+
+	n = statsfs_source_add_values(src, test_all_aggr, NULL);
+	assert(n == 0);
+	n = get_number_aggr_with_base(src, NULL);
 	assert(n == ARR_SIZE(test_all_aggr));
 
 	// sum
@@ -765,16 +788,16 @@ static void test_all_aggregations_agg_no_val_sub()
 	statsfs_source_add_subordinate(sub1, sub11);
 
 	// it changes from the previous here!
-	n = statsfs_source_add_values(sub11, test_values2, &cont);
+	n = statsfs_source_add_values(sub11, test_all_aggr, &cont2);
 	assert(n == 0);
-	n = get_number_values_with_base(sub11, &cont);
-	assert(n == ARR_SIZE(test_values));
+	n = get_number_aggr_with_base(sub11, &cont2);
+	assert(n == ARR_SIZE(test_all_aggr));
 
-	assert(get_total_number_values(src) == ARR_SIZE(test_values));
+	assert(get_total_number_values(src) == 0);
 
-	n = statsfs_source_add_values(src, test_all_aggr, &cont);
+	n = statsfs_source_add_values(src, test_all_aggr, NULL);
 	assert(n == 0);
-	n = get_number_aggr_with_base(src, &cont);
+	n = get_number_aggr_with_base(src, NULL);
 	assert(n == ARR_SIZE(test_all_aggr));
 
 	// sum
