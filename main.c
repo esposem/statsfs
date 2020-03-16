@@ -27,24 +27,9 @@ struct test_values_struct {
 
 struct container {
 	struct test_values_struct vals;
-	struct test_values_struct vals2;
 };
 
 struct statsfs_value test_values[6] = {
-	STATSFS_STAT(vals, u64, .type = STATSFS_U64, .aggr_kind = STATSFS_NONE,
-		     .mode = 0),
-	STATSFS_STAT(vals, s32, .type = STATSFS_S32, .aggr_kind = STATSFS_NONE,
-		     .mode = 0),
-	STATSFS_STAT(vals, bo, .type = STATSFS_BOOL, .aggr_kind = STATSFS_NONE,
-		     .mode = 0),
-	STATSFS_STAT(vals, u8, .type = STATSFS_U8, .aggr_kind = STATSFS_NONE,
-		     .mode = 0),
-	STATSFS_STAT(vals, s16, .type = STATSFS_S16, .aggr_kind = STATSFS_NONE,
-		     .mode = 0),
-	{ NULL },
-};
-
-struct statsfs_value test_values2[6] = {
 	STATSFS_STAT(vals, u64, .type = STATSFS_U64, .aggr_kind = STATSFS_NONE,
 		     .mode = 0),
 	STATSFS_STAT(vals, s32, .type = STATSFS_S32, .aggr_kind = STATSFS_NONE,
@@ -111,14 +96,6 @@ struct container cont = {
 			.u8 = def_val_u8,
 			.s16 = def_val_s16,
 		},
-	// .vals2 =
-	// 	{
-	// 		.u64 = def_u64,
-	// 		.s32 = def_val2_s32,
-	// 		.bo = def_val2_bool,
-	// 		.u8 = def_val2_u8,
-	// 		.s16 = def_val2_s16,
-	// 	},
 };
 
 struct container cont2 = {
