@@ -11,26 +11,13 @@
 
 /*
     TODO:
-    - kref and mutex
+    - kref and mutex (rwsem)
     - files
 */
 
 static int is_val_signed(struct statsfs_value *val)
 {
 	return val->type & STATSFS_SIGN;
-}
-
-static struct statsfs_value *
-find_value_by_name(struct statsfs_value_source *src, char *val)
-{
-	struct statsfs_value *entry;
-
-	for (entry = src->values; entry->name; entry++) {
-		if (!strcmp(entry->name, val)) {
-			return entry;
-		}
-	}
-	return NULL;
 }
 
 static struct statsfs_value *find_value(struct statsfs_value_source *src,
@@ -46,21 +33,14 @@ static struct statsfs_value *find_value(struct statsfs_value_source *src,
 	return NULL;
 }
 
-// search for an entry == arg in source
 static struct statsfs_value *
-search_statsfs_in_source(struct statsfs_source *src, struct statsfs_value *arg,
-			 struct statsfs_value_source **val_src, uint8_t is_aggr)
+search_value_in_source(struct statsfs_source *src, struct statsfs_value *arg,
+		       struct statsfs_value_source **val_src)
 {
 	struct statsfs_value *entry;
 	struct statsfs_value_source *src_entry;
-	uint8_t is_entry_ok;
 
 	list_for_each_entry (src_entry, &src->values_head, list_element) {
-		is_entry_ok = (src_entry->base_addr != 0) ^ is_aggr;
-		if (!is_entry_ok) {
-			continue;
-		}
-
 		entry = find_value(src_entry, arg);
 		if (entry) {
 			if (val_src) {
@@ -76,45 +56,6 @@ search_statsfs_in_source(struct statsfs_source *src, struct statsfs_value *arg,
 void statsfs_source_register(struct statsfs_source *source)
 {
 	// TODO: creates file /sys/kernel/statsfs/kvm
-}
-
-struct statsfs_source *statsfs_source_create(const char *fmt, ...)
-{
-	va_list ap;
-	char buf[100];
-	struct statsfs_source *ret;
-
-	va_start(ap, fmt);
-	int char_needed = vsnprintf(buf, 100, fmt, ap);
-	va_end(ap);
-
-	ret = malloc(sizeof(struct statsfs_source));
-	if (!ret) {
-		printf("Error in creating statsfs_source!\n");
-		return NULL;
-	}
-
-	ret->name = malloc(char_needed + 1);
-	if (!ret) {
-		printf("Error in creating statsfs_source name!\n");
-		return NULL;
-	}
-	memcpy(ret->name, buf, char_needed);
-	ret->name[char_needed] = '\0';
-
-	ret->refcount = 1; //TODO: fix for kernel
-	ret->values_head = (struct list_head)LIST_HEAD_INIT(ret->values_head);
-
-	ret->subordinates_head =
-		(struct list_head)LIST_HEAD_INIT(ret->subordinates_head);
-	ret->list_element = (struct list_head)LIST_HEAD_INIT(ret->list_element);
-
-	return ret;
-}
-
-void statsfs_source_destroy(struct statsfs_source *src)
-{
-	statsfs_source_put(src);
 }
 
 static struct statsfs_value_source *create_value_source(void *base)
@@ -189,15 +130,8 @@ void statsfs_source_remove_subordinate(struct statsfs_source *source,
 	       source->name);
 }
 
-static struct statsfs_value *
-search_value_in_source(struct statsfs_source *src, struct statsfs_value *arg,
-		       struct statsfs_value_source **val_src)
-{
-	return search_statsfs_in_source(src, arg, val_src, 0);
-}
-
-static uint64_t get_correct_value(struct statsfs_value_source *src,
-				  struct statsfs_value *val)
+static uint64_t get_simple_value(struct statsfs_value_source *src,
+				 struct statsfs_value *val)
 {
 	uint64_t value_found;
 	void *address;
@@ -259,7 +193,7 @@ static void search_all_simple_values(struct statsfs_source *src,
 		}
 
 		// must be here
-		value_found = get_correct_value(src_entry, val);
+		value_found = get_simple_value(src_entry, val);
 		agg->sum += value_found;
 		agg->count++;
 		agg->count_zero += (value_found == 0);
@@ -345,13 +279,6 @@ static void set_final_value(struct statsfs_aggregate_value *agg,
 	}
 }
 
-static struct statsfs_value *
-search_aggr_in_source(struct statsfs_source *src, struct statsfs_value *val,
-		      struct statsfs_value_source **val_src)
-{
-	return search_statsfs_in_source(src, val, val_src, 1);
-}
-
 int statsfs_source_get_value(struct statsfs_source *source,
 			     struct statsfs_value *arg, uint64_t *ret)
 {
@@ -367,24 +294,37 @@ int statsfs_source_get_value(struct statsfs_source *source,
 
 	// look in simple values
 	found = search_value_in_source(source, arg, &src_entry);
-	if (found) {
-		*ret = get_correct_value(src_entry, found);
+
+	if (!found) {
+		printf("ERROR: Value in source \"%s\" not found!\n",
+		       source->name);
+		return -ENOENT;
+	}
+
+	if (src_entry->base_addr != NULL) {
+		*ret = get_simple_value(src_entry, found);
 		return 0;
 	}
 
 	// look in aggregates
-	found = search_aggr_in_source(source, arg, &src_entry);
-	if (found) {
-		BUG_ON(found->aggr_kind != STATSFS_NONE);
-		BUG_ON(src_entry->base_addr == NULL);
-		init_aggregate_value(&aggr, found);
-		do_recursive_aggregation(source, found, src_entry, &aggr);
-		set_final_value(&aggr, found, ret);
-		return 0;
-	}
+	BUG_ON(found->aggr_kind != STATSFS_NONE);
+	init_aggregate_value(&aggr, found);
+	do_recursive_aggregation(source, found, src_entry, &aggr);
+	set_final_value(&aggr, found, ret);
+	return 0;
+}
 
-	printf("ERROR: Value in source \"%s\" not found!\n", source->name);
-	return -ENOENT;
+static struct statsfs_value *
+find_value_by_name(struct statsfs_value_source *src, char *val)
+{
+	struct statsfs_value *entry;
+
+	for (entry = src->values; entry->name; entry++) {
+		if (!strcmp(entry->name, val)) {
+			return entry;
+		}
+	}
+	return NULL;
 }
 
 static struct statsfs_value *
@@ -459,4 +399,43 @@ void statsfs_source_put(struct statsfs_source *source)
 
 		free(source);
 	}
+}
+
+struct statsfs_source *statsfs_source_create(const char *fmt, ...)
+{
+	va_list ap;
+	char buf[100];
+	struct statsfs_source *ret;
+
+	va_start(ap, fmt);
+	int char_needed = vsnprintf(buf, 100, fmt, ap);
+	va_end(ap);
+
+	ret = malloc(sizeof(struct statsfs_source));
+	if (!ret) {
+		printf("Error in creating statsfs_source!\n");
+		return NULL;
+	}
+
+	ret->name = malloc(char_needed + 1);
+	if (!ret) {
+		printf("Error in creating statsfs_source name!\n");
+		return NULL;
+	}
+	memcpy(ret->name, buf, char_needed);
+	ret->name[char_needed] = '\0';
+
+	ret->refcount = 1; //TODO: fix for kernel
+	ret->values_head = (struct list_head)LIST_HEAD_INIT(ret->values_head);
+
+	ret->subordinates_head =
+		(struct list_head)LIST_HEAD_INIT(ret->subordinates_head);
+	ret->list_element = (struct list_head)LIST_HEAD_INIT(ret->list_element);
+
+	return ret;
+}
+
+void statsfs_source_destroy(struct statsfs_source *src)
+{
+	statsfs_source_put(src);
 }

@@ -647,8 +647,6 @@ static void test_all_aggregations_val_agg_val()
 	n = get_number_aggr_with_base(sub2, &cont2);
 	assert(n == ARR_SIZE(test_all_aggr));
 
-	// assert(get_total_number_values(src) == ARR_SIZE(test_values) * 2);
-
 	n = statsfs_source_add_values(sub1, test_all_aggr, NULL);
 	assert(n == 0);
 	n = get_number_aggr_with_base(sub1, NULL);
