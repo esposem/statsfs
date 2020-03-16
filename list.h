@@ -26,7 +26,7 @@
 #include <stdio.h>
 
 #ifndef LIST_H
-#define LIST_H	1
+#define LIST_H 1
 
 /*
  * The definitions of this file are adopted from those which can be
@@ -42,14 +42,15 @@ struct list_head {
 /* avoid conflicts with BSD-only sys/queue.h */
 #undef LIST_HEAD
 /* Define a variable with the head and tail of the list. */
-#define LIST_HEAD(name) \
-	struct list_head name = { &(name), &(name) }
+#define LIST_HEAD(name) struct list_head name = { &(name), &(name) }
 
 /* Initialize a new list head. */
-#define INIT_LIST_HEAD(ptr) \
-	(ptr)->next = (ptr)->prev = (ptr)
+#define INIT_LIST_HEAD(ptr) (ptr)->next = (ptr)->prev = (ptr)
 
-#define LIST_HEAD_INIT(name) { &(name), &(name) }
+#define LIST_HEAD_INIT(name)                                                   \
+	{                                                                      \
+		&(name), &(name)                                               \
+	}
 
 /* Add new element at the head of the list. */
 static inline void list_add(struct list_head *newp, struct list_head *head)
@@ -118,42 +119,40 @@ static inline void list_splice(struct list_head *add, struct list_head *head)
 }
 
 /* Get typed element from list at a given position. */
-#define list_entry(ptr, type, member) \
-	((type *) ((char *) (ptr) - offsetof(type, member)))
+#define list_entry(ptr, type, member)                                          \
+	((type *)((char *)(ptr)-offsetof(type, member)))
 
 /* Get first entry from a list. */
-#define list_first_entry(ptr, type, member) \
+#define list_first_entry(ptr, type, member)                                    \
 	list_entry((ptr)->next, type, member)
 
 /* Iterate forward over the elements of the list. */
-#define list_for_each(pos, head) \
+#define list_for_each(pos, head)                                               \
 	for (pos = (head)->next; pos != (head); pos = pos->next)
 
-#define list_for_each_entry(pos, head, member)                     \
-    for (pos = list_entry((head)->next, typeof(*pos), member);     \
-        &pos->member != (head);                                    \
-        pos = list_entry(pos->member.next, typeof(*pos), member))
+#define list_for_each_entry(pos, head, member)                                 \
+	for (pos = list_entry((head)->next, typeof(*pos), member);             \
+	     &pos->member != (head);                                           \
+	     pos = list_entry(pos->member.next, typeof(*pos), member))
 /*
  * Iterate forward over the elements list. The list elements can be
  * removed from the list while doing this.
  */
-#define list_for_each_safe(pos, p, head) \
-	for (pos = (head)->next, p = pos->next; \
-		pos != (head); \
-		pos = p, p = pos->next)
+#define list_for_each_safe(pos, p, head)                                       \
+	for (pos = (head)->next, p = pos->next; pos != (head);                 \
+	     pos = p, p = pos->next)
 
 /* Iterate backward over the elements of the list. */
-#define list_for_each_prev(pos, head) \
+#define list_for_each_prev(pos, head)                                          \
 	for (pos = (head)->prev; pos != (head); pos = pos->prev)
 
 /*
  * Iterate backwards over the elements list. The list elements can be
  * removed from the list while doing this.
  */
-#define list_for_each_prev_safe(pos, p, head) \
-	for (pos = (head)->prev, p = pos->prev; \
-		pos != (head); \
-		pos = p, p = pos->prev)
+#define list_for_each_prev_safe(pos, p, head)                                  \
+	for (pos = (head)->prev, p = pos->prev; pos != (head);                 \
+	     pos = p, p = pos->prev)
 
 static inline int list_empty(struct list_head *head)
 {
@@ -179,7 +178,7 @@ struct volatile_list_head {
 	volatile struct volatile_list_head *next, *prev;
 };
 
-#define VOLATILE_LIST_HEAD(name) \
+#define VOLATILE_LIST_HEAD(name)                                               \
 	volatile struct volatile_list_head name = { &(name), &(name) }
 
 static inline void __volatile_list_del(volatile struct volatile_list_head *prev,
