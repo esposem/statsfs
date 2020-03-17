@@ -75,6 +75,104 @@ struct statsfs_value test_all_aggr[6] = {
 	{ NULL },
 };
 
+struct kvm;
+
+struct test_vcpu {
+	uint64_t u64;
+	int32_t s32;
+	bool bo;
+	uint8_t u8;
+	int16_t s16;
+};
+
+struct kvm_vcpu {
+	char more_useless[10];
+	struct kvm *kvm;
+	void *more_more_useless;
+	struct test_vcpu vals_vcpu;
+	int useless;
+};
+
+struct kvm_vcpu vcpu = {
+	.kvm = NULL,
+	.vals_vcpu = {
+		.u64 = 1234,
+		.s32 = -10,
+		.bo = true,
+		.u8 = 255,
+		.s16 = -1232,
+	},
+};
+
+struct test_vm {
+	uint64_t vm_u64;
+	int32_t vm_s32;
+	bool vm_bo;
+	uint8_t vm_u8;
+	int16_t vm_s16;
+};
+
+struct kvm {
+	int useless;
+	char more_useless[10];
+	struct kvm_vcpu *vcpus;
+	struct test_vm vals_vm;
+	void *more_more_useless;
+};
+
+struct kvm kvm = {
+	.vcpus = &vcpu,
+	.vals_vm = {
+		.vm_u64 = 9843223,
+		.vm_s32 = -93223,
+		.vm_bo = false,
+		.vm_u8 = 0,
+		.vm_s16 = -9999,
+	},
+};
+
+#define STATSFS_VCPU(x, ...)                                               \
+	{                                                                      \
+		.name = #x, .offset = offsetof(struct kvm_vcpu, vals_vcpu.x),        \
+		##__VA_ARGS__                                                  \
+	}
+
+#define STATSFS_VM(x, ...)                                               \
+	{                                                                      \
+		.name = #x, .offset = offsetof(struct kvm, vals_vm.x),        \
+		##__VA_ARGS__                                                  \
+	}
+
+
+struct statsfs_value test_vcpu[6] = {
+	STATSFS_VCPU(s32, .type = STATSFS_S32, .aggr_kind = STATSFS_NONE,
+		     .mode = 0),
+	STATSFS_VCPU(bo, .type = STATSFS_BOOL,
+		     .aggr_kind = STATSFS_NONE, .mode = 0),
+	STATSFS_VCPU(u64, .type = STATSFS_U64, .aggr_kind = STATSFS_NONE,
+		     .mode = 0),
+	STATSFS_VCPU(u8, .type = STATSFS_U8, .aggr_kind = STATSFS_NONE,
+		     .mode = 0),
+	STATSFS_VCPU(s16, .type = STATSFS_S16, .aggr_kind = STATSFS_NONE,
+		     .mode = 0),
+	{ NULL },
+};
+
+struct statsfs_value test_vm[6] = {
+	STATSFS_STAT(vm_s32, .type = STATSFS_S32, .aggr_kind = STATSFS_MIN,
+		     .mode = 0),
+	STATSFS_STAT(vm_bo, .type = STATSFS_BOOL,
+		     .aggr_kind = STATSFS_COUNT_ZERO, .mode = 0),
+	STATSFS_STAT(vm_u64, .type = STATSFS_U64, .aggr_kind = STATSFS_SUM,
+		     .mode = 0),
+	STATSFS_STAT(vm_u8, .type = STATSFS_U8, .aggr_kind = STATSFS_AVG,
+		     .mode = 0),
+	STATSFS_STAT(vm_s16, .type = STATSFS_S16, .aggr_kind = STATSFS_MAX,
+		     .mode = 0),
+	{ NULL },
+};
+
+
 #define def_u64 64
 
 #define def_val_s32 INT32_MIN
