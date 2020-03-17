@@ -53,7 +53,7 @@ void statsfs_source_add_subordinate(struct statsfs_source *source,
 void statsfs_source_remove_subordinate(struct statsfs_source *source,
 				       struct statsfs_source *sub);
 
-int statsfs_source_get_value_by_val(struct statsfs_source *source,
+int statsfs_source_get_value(struct statsfs_source *source,
 				    struct statsfs_value *val, uint64_t *ret);
 
 int statsfs_source_get_value_by_name(struct statsfs_source *source, char *name,
